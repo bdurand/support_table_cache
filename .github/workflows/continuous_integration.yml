@@ -1,0 +1,37 @@
+name: Continuous Integration
+
+on:
+  push:
+    branches:
+      - master
+      - actions-*
+    tags:
+      - v*
+  pull_request:
+    branches-ignore:
+      - actions-*
+
+env:
+  BUNDLE_CLEAN: "true"
+  BUNDLE_PATH: vendor/bundle
+  BUNDLE_JOBS: 3
+  BUNDLE_RETRY: 3
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v2
+    - name: Set up Ruby
+      uses: ruby/setup-ruby@v1
+      with:
+        ruby-version: 3.0
+    - name: Install gems
+      run: |
+        sudo apt-get update
+        sudo apt-get install libsqlite3-dev
+        bundle install
+    - name: Run Tests
+      run: bundle exec rake
+    - name: standardrb
+      run:  bundle exec standardrb
