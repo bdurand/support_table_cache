@@ -1,6 +1,6 @@
 # Support Table Cache
 
-[![Continuous Integration]()
+[![Continuous Integration](https://github.com/bdurand/support_table_cache/actions/workflows/continuous_integration.yml/badge.svg)](https://github.com/bdurand/support_table_cache/actions/workflows/continuous_integration.yml)
 [![Ruby Style Guide](https://img.shields.io/badge/code_style-standard-brightgreen.svg)](https://github.com/testdouble/standard)
 
 This gem adds caching for ActiveRecord support table models. These are models which have a unique key (i.e. a unique `name` attribute, etc.) and which have a limited number of entries (a few hundred at most). These are often models added do normalize the data structure.
