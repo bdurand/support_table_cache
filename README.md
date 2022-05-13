@@ -7,16 +7,16 @@ This gem adds caching for ActiveRecord support table models. These are models wh
 
 Rows from these kinds of tables are rarely inserted, updated, or deleted, but are queried very frequently. To take advantage of this behavior, this gem adds automatic caching for records when using the `find_by` method. This is most useful in situations where you have a unique key but need to get the database row for that key.
 
-For instance, suppose you have a model `Status` that has a unique name attribute and processes that pass in that status using the name and you then need to get the id for the status to query for records:
+For instance, suppose you have a model `Status` that has a unique name attribute and you need to process a bunch of records from a data source that includes the status name. In order to do anything, you'll need to lookup each status by name to get the database id:
 
 ```ruby
-status = Status.find_by(name: params[:status]
-results = Things.where(status_id: status.id)
+params.each do |data|
+  status = Status.find_by(name: data[:status]
+  Things.where(id: data[:id]).update!(status_id: status.id)
+end
 ```
 
 With this gem, you can avoid the database query for the `find_by` call. You don't need to alter your code in any way other than to include `SupportTableCache` in your model and tell it which attributes comprise a unique key that can be used for caching.
-
-Admittedly, that won't save you much in this situation, since it's a single database query. However, if you have code like that in a loop, it can save you quite a bit of load on the database.
 
 ## Usage
 
