@@ -36,6 +36,9 @@ To use the gem, you need to include it in you models and then specify which attr
   # Uses cache on a composite key
   MyModel.find_by(group: "first", name: "One")
 
+  # Uses cache on a composite key with scoping
+  MyModel.where(group: "first").find_by(name: "One")
+
   # Does not use cache since value is not defined as a cacheable key
   MyModel.find_by(value: 1)
 

@@ -54,6 +54,24 @@ describe SupportTableCache do
       expect(TestModel.find_by(group: "First", code: "one").value).to eq 1
     end
 
+    it "does not use the cache when finding by a single attribute in a composite key" do
+      expect(TestModel.find_by(code: "one")).to eq record_1
+      expect(SupportTableCache.cache.read(SupportTableCache.cache_key(TestModel, {code: "one"}, ["code"], false))).to eq nil
+    end
+
+    it "uses the cache when finding by multiple cacheable attributes with a relation chain" do
+      expect(TestModel.where(group: "First").find_by(code: "one")).to eq record_1
+      expect(SupportTableCache.cache.read(SupportTableCache.cache_key(TestModel, {code: "one", group: "First"}, ["code", "group"], false))).to eq record_1
+
+      expect(TestModel.where(group: "First").find_by(code: "one")).to eq record_1
+      expect(TestModel.where(group: "Second").find_by(code: "two")).to eq record_2
+
+      expect(TestModel.where(group: "First").find_by(code: "one").value).to eq 1
+      record_1.update_columns(value: 3)
+      expect(TestModel.where(group: "First").find_by(code: "one").value).to eq 1
+      expect(TestModel.where(code: "one").find_by(group: "First").value).to eq 1
+    end
+
     it "does not use the cache when finding by a non-cacheable attribute" do
       expect(SupportTableCache.cache).to receive(:fetch).and_return(:value)
       expect(TestModel.find_by(name: "One")).to eq :value

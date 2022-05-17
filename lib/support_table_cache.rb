@@ -10,6 +10,10 @@ module SupportTableCache
     class_attribute :support_table_cache_by_attributes, instance_accessor: false
     class_attribute :support_table_cache_ttl, instance_accessor: false
 
+    unless ActiveRecord::Relation.include?(RelationOverride)
+      ActiveRecord::Relation.prepend(RelationOverride)
+    end
+
     class << self
       prepend FindByOverride unless include?(FindByOverride)
       private :support_table_cache_by_attributes=
@@ -105,9 +109,43 @@ module SupportTableCache
 
       cache_key = nil
       attributes = args.first if args.size == 1 && args.first.is_a?(Hash)
-      if attributes
+
+      if respond_to?(:scope_attributes) && scope_attributes.present?
+        attributes = scope_attributes.merge(attributes || {})
+      end
+
+      if attributes.present?
         support_table_cache_by_attributes.each do |attribute_names, case_sensitive|
           cache_key = SupportTableCache.cache_key(self, attributes, attribute_names, case_sensitive)
+          break if cache_key
+        end
+      end
+
+      if cache_key
+        SupportTableCache.cache.fetch(cache_key, expires_in: support_table_cache_ttl) { super }
+      else
+        super
+      end
+    end
+  end
+
+  module RelationOverride
+    # Override for the find_by method that looks in the cache first.
+    def find_by(*args)
+      return super unless klass.include?(SupportTableCache)
+      return super if SupportTableCache.cache.nil? || SupportTableCache.disabled?
+
+      cache_key = nil
+      attributes = args.first if args.size == 1 && args.first.is_a?(Hash)
+
+      # Apply any attributes from the current relation chain
+      if scope_attributes.present?
+        attributes = scope_attributes.merge(attributes || {})
+      end
+
+      if attributes.present?
+        support_table_cache_by_attributes.each do |attribute_names, case_sensitive|
+          cache_key = SupportTableCache.cache_key(klass, attributes, attribute_names, case_sensitive)
           break if cache_key
         end
       end
