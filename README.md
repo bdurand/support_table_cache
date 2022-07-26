@@ -56,7 +56,7 @@ By default, records will be cleaned up from the cache only when they are modifie
   end
 ```
 
-If you are in a Rails application, the `Rails.cache` will be used by default to cache records. Otherwise, you need to set the `ActiveSupport::Cache::CacheStore`` to use.
+If you are in a Rails application, the `Rails.cache` will be used by default to cache records. Otherwise, you need to set the `ActiveSupport::Cache::CacheStore` to use.
 
 ```ruby
 SupportTableCache.cache = ActiveSupport::Cache::MemoryStore.new
@@ -64,14 +64,15 @@ SupportTableCache.cache = ActiveSupport::Cache::MemoryStore.new
 
 You can also set a cache per class. You could do this, for instance, to set an in memory cache on models that will never change to avoid a network round trip to the cache server.
 
+If you have a small support table that comfortably fits in memory and that you don't need to expire from, then you can even set the cache to a simple hash for optimal performance.
+
 ```ruby
   class MyModel < ApplicationRecord
     include SupportTableCache
 
-    self.support_table_cache = ActiveSupport::Cache::MemoryStore.new
+    self.support_table_cache = {}
   end
 ```
-
 
 You can disable the cache within a block either globally or only for a specific class. If the cache is disabled, then all queries will pass through to the database. You can also disable it globally which you may want to do in test mode if the cache interferes with your tests.
 

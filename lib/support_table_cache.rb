@@ -14,6 +14,7 @@ module SupportTableCache
     class_attribute :support_table_cache_ttl, instance_accessor: false
 
     # Set a class specific cache to use in lieu of the global cache.
+    # The value can either be an instance of ActiveSupport::Cache::Store or Hash.
     class_attribute :support_table_cache, instance_accessor: false
 
     unless ActiveRecord::Relation.include?(RelationOverride)
@@ -115,7 +116,7 @@ module SupportTableCache
     end
 
     # Set the global cache to use. This will default to `Rails.cache` if you are running in
-    # a Rails environment.
+    # a Rails environment. The value should be an instance of ActiveSupport::Cache::Store.
     attr_writer :cache
 
     def cache

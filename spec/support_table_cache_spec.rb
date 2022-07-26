@@ -175,12 +175,13 @@ describe SupportTableCache do
       end
     end
 
-    it "can set a cache per class" do
-      cache = ActiveSupport::Cache::MemoryStore.new
+    it "can set a cache per class using a hash" do
+      cache = {}
       TestModel.support_table_cache = cache
       begin
         SupportTableCache.cache = nil
-        expect(cache).to receive(:fetch).and_call_original
+        expect(cache).to receive(:fetch).twice.and_call_original
+        expect(TestModel.find_by(name: "One")).to eq record_1
         expect(TestModel.find_by(name: "One")).to eq record_1
       ensure
         TestModel.support_table_cache = nil
