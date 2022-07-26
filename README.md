@@ -64,13 +64,11 @@ SupportTableCache.cache = ActiveSupport::Cache::MemoryStore.new
 
 You can also set a cache per class. You could do this, for instance, to set an in memory cache on models that will never change to avoid a network round trip to the cache server.
 
-If you have a small support table that comfortably fits in memory and that you don't need to expire from, then you can even set the cache to a simple hash for optimal performance.
-
 ```ruby
   class MyModel < ApplicationRecord
     include SupportTableCache
 
-    self.support_table_cache = {}
+    self.support_table_cache = ActiveSupport::Cache::MemoryStore.new
   end
 ```
 

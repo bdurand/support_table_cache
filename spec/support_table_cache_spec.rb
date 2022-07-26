@@ -176,15 +176,39 @@ describe SupportTableCache do
     end
 
     it "can set a cache per class using a hash" do
-      cache = {}
+      cache = ActiveSupport::Cache::MemoryStore.new
       TestModel.support_table_cache = cache
+      save_cache = SupportTableCache.cache
+      SupportTableCache.cache = nil
       begin
-        SupportTableCache.cache = nil
         expect(cache).to receive(:fetch).twice.and_call_original
         expect(TestModel.find_by(name: "One")).to eq record_1
         expect(TestModel.find_by(name: "One")).to eq record_1
       ensure
+        SupportTableCache.cache = save_cache
         TestModel.support_table_cache = nil
+      end
+    end
+  end
+
+  describe "loading the cache" do
+    it "loads the cache with all records" do
+      cache = ActiveSupport::Cache::MemoryStore.new
+      TestModel.support_table_cache = cache
+      begin
+        TestModel.load_cache
+      ensure
+        TestModel.support_table_cache = nil
+      end
+
+      [
+        [record_1, {"name" => "One"}, ["name"], true],
+        [record_1, {"code" => "one", "group" => "First"}, ["code", "group"], false],
+        [record_2, {"name" => "Two"}, ["name"], true],
+        [record_2, {"code" => "two", "group" => "Second"}, ["code", "group"], false]
+      ].each do |record, attributes, attribute_names, case_sensitive|
+        cache_key = SupportTableCache.cache_key(TestModel, attributes, attribute_names, case_sensitive)
+        expect(cache.read(cache_key)).to eq record
       end
     end
   end

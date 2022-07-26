@@ -50,6 +50,21 @@ module SupportTableCache
       disable_cache(false, &block)
     end
 
+    # Load all records into the cache. You should only call this method on small tables with
+    # a few dozen rows at most since it will crawl all of the rows in the table.
+    def load_cache
+      cache = current_support_table_cache
+      return super if cache.nil?
+
+      find_each do |record|
+        support_table_cache_by_attributes.each do |attribute_names, case_sensitive|
+          attributes = record.attributes.select { |name, value| attribute_names.include?(name) }
+          cache_key = SupportTableCache.cache_key(self, attributes, attribute_names, case_sensitive)
+          cache.fetch(cache_key, expires_in: support_table_cache_ttl) { record }
+        end
+      end
+    end
+
     protected
 
     # Specify which attributes can be used for looking up records in the cache. Each value must
