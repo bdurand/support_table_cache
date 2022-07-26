@@ -147,6 +147,20 @@ describe SupportTableCache do
       end
       expect(SupportTableCache.disabled?).to eq false
     end
+
+    it "can disable just for a class" do
+      SupportTableCache.disable do
+        TestModel.enable_caching do
+          expect(SupportTableCache.disabled?).to eq false
+          expect(SupportTableCache.cache).to receive(:fetch)
+          expect(TestModel.find_by(name: "One")).to eq record_1
+          TestModel.disable_caching do
+            expect(SupportTableCache.cache).not_to receive(:fetch)
+            expect(TestModel.find_by(name: "One")).to eq record_1
+          end
+        end
+      end
+    end
   end
 
   describe "setting the cache" do
@@ -158,6 +172,18 @@ describe SupportTableCache do
         expect(TestModel.find_by(name: "One")).to eq record_1
       ensure
         SupportTableCache.cache = cache
+      end
+    end
+
+    it "can set a cache per class" do
+      cache = ActiveSupport::Cache::MemoryStore.new
+      TestModel.support_table_cache = cache
+      begin
+        SupportTableCache.cache = nil
+        expect(cache).to receive(:fetch).and_call_original
+        expect(TestModel.find_by(name: "One")).to eq record_1
+      ensure
+        TestModel.support_table_cache = nil
       end
     end
   end

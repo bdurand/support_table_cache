@@ -7,8 +7,14 @@ module SupportTableCache
   extend ActiveSupport::Concern
 
   included do
+    # @api private Used to store the list of attribute names used for caching.
     class_attribute :support_table_cache_by_attributes, instance_accessor: false
+
+    # Set the time to live in seconds for records in the cache.
     class_attribute :support_table_cache_ttl, instance_accessor: false
+
+    # Set a class specific cache to use in lieu of the global cache.
+    class_attribute :support_table_cache, instance_accessor: false
 
     unless ActiveRecord::Relation.include?(RelationOverride)
       ActiveRecord::Relation.prepend(RelationOverride)
@@ -23,6 +29,26 @@ module SupportTableCache
   end
 
   class_methods do
+    # Disable the caching behavior for this classes within the block. The disabled setting
+    # for a class will always take precedence over the global setting.
+    # @param disabled [Boolean] Caching will be disabled if this is true, enabled if false.
+    # @yieldreturn The return value of the block.
+    def disable_cache(disabled = true, &block)
+      varname = "support_table_cache_disabled:#{name}"
+      save_val = Thread.current.thread_variable_get(varname)
+      begin
+        Thread.current.thread_variable_set(varname, !!disabled)
+      ensure
+        Thread.current.thread_variable_set(varname, save_val)
+      end
+    end
+
+    # Enable the caching behavior for this classes within the block. The enabled setting
+    # for a class will always take precedence over the global setting.
+    def enable_cache
+      disable_cache(false, &block)
+    end
+
     protected
 
     # Specify which attributes can be used for looking up records in the cache. Each value must
@@ -34,26 +60,45 @@ module SupportTableCache
       attributes = Array(attributes).map(&:to_s).sort.freeze
       self.support_table_cache_by_attributes = (support_table_cache_by_attributes || []) + [[attributes, case_sensitive]]
     end
+
+    private
+
+    def support_table_cache_disabled?
+      current_block_value = Thread.current.thread_variable_get("support_table_cache_disabled:#{name}")
+      if current_block_value.nil?
+        SupportTableCache.disabled?
+      else
+        current_block_value
+      end
+    end
+
+    def current_support_table_cache
+      return nil? if support_table_cache_disabled?
+      support_table_cache || SupportTableCache.cache
+    end
   end
 
   class << self
-    # Disable the caching behavior. If a block is specified, then caching is only
-    # disabled for that block. If no block is specified, then caching is disabled
-    # globally.
+    # Disable the caching behavior for all classes. If a block is specified, then caching is only
+    # disabled for that block. If no block is specified, then caching is disabled globally.
     # @param disabled [Boolean] Caching will be disabled if this is true, enabled if false.
+    # @yieldreturn The return value of the block.
     def disable(disabled = true, &block)
       if block
-        save_val = Thread.current[:support_table_cache_disabled]
+        save_val = Thread.current.thread_variable_get(:support_table_cache_disabled)
         begin
-          Thread.current[:support_table_cache_disabled] = !!disabled
+          Thread.current.thread_variable_set(:support_table_cache_disabled, !!disabled)
         ensure
-          Thread.current[:support_table_cache_disabled] = save_val
+          Thread.current.thread_variable_set(:support_table_cache_disabled, save_val)
         end
       else
         @disabled = !!disabled
       end
     end
 
+    # Enable the caching behavior for all classes. If a block is specified, then caching is only
+    # enabled for that block. If no block is specified, then caching is enabled globally.
+    # @yieldreturn The return value of the block.
     def enable(&block)
       disable(false, &block)
     end
@@ -61,7 +106,7 @@ module SupportTableCache
     # Return true if caching has been disabled.
     # @return [Boolean]
     def disabled?
-      block_value = Thread.current[:support_table_cache_disabled]
+      block_value = Thread.current.thread_variable_get(:support_table_cache_disabled)
       if block_value.nil?
         !!(defined?(@disabled) && @disabled)
       else
@@ -69,6 +114,8 @@ module SupportTableCache
       end
     end
 
+    # Set the global cache to use. This will default to `Rails.cache` if you are running in
+    # a Rails environment.
     attr_writer :cache
 
     def cache
@@ -105,7 +152,8 @@ module SupportTableCache
   module FindByOverride
     # Override for the find_by method that looks in the cache first.
     def find_by(*args)
-      return super if SupportTableCache.cache.nil? || SupportTableCache.disabled?
+      cache = current_support_table_cache
+      return super if cache.nil?
 
       cache_key = nil
       attributes = args.first if args.size == 1 && args.first.is_a?(Hash)
@@ -122,7 +170,7 @@ module SupportTableCache
       end
 
       if cache_key
-        SupportTableCache.cache.fetch(cache_key, expires_in: support_table_cache_ttl) { super }
+        cache.fetch(cache_key, expires_in: support_table_cache_ttl) { super }
       else
         super
       end
@@ -133,7 +181,9 @@ module SupportTableCache
     # Override for the find_by method that looks in the cache first.
     def find_by(*args)
       return super unless klass.include?(SupportTableCache)
-      return super if SupportTableCache.cache.nil? || SupportTableCache.disabled?
+
+      cache = klass.send(:current_support_table_cache)
+      return super if cache.nil?
 
       cache_key = nil
       attributes = args.first if args.size == 1 && args.first.is_a?(Hash)
@@ -151,7 +201,7 @@ module SupportTableCache
       end
 
       if cache_key
-        SupportTableCache.cache.fetch(cache_key, expires_in: support_table_cache_ttl) { super }
+        cache.fetch(cache_key, expires_in: support_table_cache_ttl) { super }
       else
         super
       end
@@ -162,7 +212,10 @@ module SupportTableCache
   # @return [void]
   def uncache
     cache_by_attributes = self.class.support_table_cache_by_attributes
-    return if cache_by_attributes.blank? || SupportTableCache.cache.nil?
+    return if cache_by_attributes.blank?
+
+    cache = self.class.send(:current_support_table_cache)
+    return if cache.nil?
 
     cache_by_attributes.each do |attribute_names, case_sensitive|
       attributes = {}
@@ -170,7 +223,7 @@ module SupportTableCache
         attributes[name] = self[name]
       end
       cache_key = SupportTableCache.cache_key(self.class, attributes, attribute_names, case_sensitive)
-      SupportTableCache.cache.delete(cache_key)
+      cache.delete(cache_key)
     end
   end
 
@@ -181,7 +234,10 @@ module SupportTableCache
   # and after the change.
   def support_table_clear_cache_entries
     cache_by_attributes = self.class.support_table_cache_by_attributes
-    return if cache_by_attributes.blank? || SupportTableCache.cache.nil?
+    return if cache_by_attributes.blank?
+
+    cache = self.class.send(:current_support_table_cache)
+    return if cache.nil?
 
     cache_by_attributes.each do |attribute_names, case_sensitive|
       attributes_before = {} if saved_change_to_id.blank? || saved_change_to_id.first.present?
@@ -196,7 +252,7 @@ module SupportTableCache
       end
       [attributes_before, attributes_after].compact.uniq.each do |attributes|
         cache_key = SupportTableCache.cache_key(self.class, attributes, attribute_names, case_sensitive)
-        SupportTableCache.cache.delete(cache_key)
+        cache.delete(cache_key)
       end
     end
   end

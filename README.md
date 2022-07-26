@@ -62,7 +62,18 @@ If you are in a Rails application, the `Rails.cache` will be used by default to 
 SupportTableCache.cache = ActiveSupport::Cache::MemoryStore.new
 ```
 
-You can also disable caching behavior entirely if you want or just within a block. You may want to disable it entirely in test mode if it interferes with your tests.
+You can also set a cache per class. You could do this, for instance, to set an in memory cache on models that will never change to avoid a network round trip to the cache server.
+
+```ruby
+  class MyModel < ApplicationRecord
+    include SupportTableCache
+
+    self.support_table_cache = ActiveSupport::Cache::MemoryStore.new
+  end
+```
+
+
+You can disable the cache within a block either globally or only for a specific class. If the cache is disabled, then all queries will pass through to the database. You can also disable it globally which you may want to do in test mode if the cache interferes with your tests.
 
 ```ruby
 # Disable the cache globally
@@ -72,6 +83,9 @@ SupportTableCache.enable do
   # Re-enable the cache for the block
   SupportTableCache.disable do
     # Disable it again
+    MySupportModel.enable_cache do
+      # Enable it only for the MySupportModel class
+    end
   end
 end
 ```
