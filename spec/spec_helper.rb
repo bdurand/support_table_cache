@@ -1,4 +1,8 @@
-require "bundler/setup"
+# frozen_string_literal: true
+
+ENV["BUNDLE_GEMFILE"] ||= File.expand_path("../Gemfile", __dir__)
+
+require "bundler/setup" if File.exist?(ENV["BUNDLE_GEMFILE"])
 
 require "active_record"
 
@@ -28,6 +32,8 @@ end
 SupportTableCache.cache = ActiveSupport::Cache::MemoryStore.new
 
 RSpec.configure do |config|
+  config.order = :random
+
   config.before do
     TestModel.delete_all
     SupportTableCache.cache.clear
