@@ -58,4 +58,5 @@ jobs:
     - name: Run Tests
       run: bundle exec rake
     - name: standardrb
+      if:   matrix.standardrb == true
       run:  bundle exec rake standard
