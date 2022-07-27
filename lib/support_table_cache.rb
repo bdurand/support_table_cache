@@ -46,12 +46,14 @@ module SupportTableCache
 
     # Enable the caching behavior for this classes within the block. The enabled setting
     # for a class will always take precedence over the global setting.
+    # @return [void]
     def enable_cache
       disable_cache(false, &block)
     end
 
     # Load all records into the cache. You should only call this method on small tables with
     # a few dozen rows at most since it will crawl all of the rows in the table.
+    # @return [void]
     def load_cache
       cache = current_support_table_cache
       return super if cache.nil?
@@ -72,6 +74,7 @@ module SupportTableCache
     # If multiple attributes are used to make up a unique key, then they should be passed in as an array.
     # @param attributes [String, Symbol, Array<String, Symbol>] Attributes that make up a unique key.
     # @param case_sensitive [Boolean] Indicate if strings should treated as case insensitive in the key.
+    # @return [void]
     def cache_by(attributes, case_sensitive: true)
       attributes = Array(attributes).map(&:to_s).sort.freeze
       self.support_table_cache_by_attributes = (support_table_cache_by_attributes || []) + [[attributes, case_sensitive]]
@@ -134,6 +137,8 @@ module SupportTableCache
     # a Rails environment. The value should be an instance of ActiveSupport::Cache::Store.
     attr_writer :cache
 
+    # Get the global cache. Will default to `Rails.cache` if running in a Rails environment.
+    # @return [ActiveSupport::Cache::Store]
     def cache
       if defined?(@cache)
         @cache
@@ -144,7 +149,11 @@ module SupportTableCache
 
     # Generate a consistent cache key for a set of attributes. Returns nil if the attributes
     # are not cacheable.
-    # @param klass [Class] The class to
+    # @param klass [Class] The class that is being cached
+    # @param attributes [Hash] The attributes used to find a record
+    # @param key_attribute_names [Array] List of attributes that can be used as a key in the cache
+    # @param case_sensitive [Boolean] Indicator if string values are case sensitive in the cache key
+    # @return [String]
     # @api private
     def cache_key(klass, attributes, key_attribute_names, case_sensitive)
       return nil if attributes.blank? || key_attribute_names.blank?
