@@ -58,4 +58,4 @@ jobs:
     - name: Run Tests
       run: bundle exec rake
     - name: standardrb
-      run:  bundle exec rake standardrb
+      run:  bundle exec rake standard
