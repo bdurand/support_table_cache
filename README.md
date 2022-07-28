@@ -62,13 +62,13 @@ If you are in a Rails application, the `Rails.cache` will be used by default to 
 SupportTableCache.cache = ActiveSupport::Cache::MemoryStore.new
 ```
 
-You can also set a cache per class. You could do this, for instance, to set an in memory cache on models that will never change to avoid a network round trip to the cache server.
+You can also set a cache per class. You could do this, for instance, to set an in memory cache on models that will never change to avoid a network round trip to the cache server. You can use the special value `:memory` to do this.
 
 ```ruby
   class MyModel < ApplicationRecord
     include SupportTableCache
 
-    self.support_table_cache = ActiveSupport::Cache::MemoryStore.new
+    self.support_table_cache = :memory
   end
 ```
 
@@ -88,6 +88,10 @@ SupportTableCache.enable do
   end
 end
 ```
+
+### Maintaining Data
+
+You can use the companion [support_table_data gem](https://github.com/bdurand/support_table_data) to add support for loading static data into your support tables as well as adding some useful helper functions.
 
 ## Installation
 

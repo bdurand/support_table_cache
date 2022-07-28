@@ -13,9 +13,7 @@ module SupportTableCache
     # Set the time to live in seconds for records in the cache.
     class_attribute :support_table_cache_ttl, instance_accessor: false
 
-    # Set a class specific cache to use in lieu of the global cache.
-    # The value can either be an instance of ActiveSupport::Cache::Store or Hash.
-    class_attribute :support_table_cache, instance_accessor: false
+    class_attribute :support_table_cache_impl, instance_accessor: false
 
     unless ActiveRecord::Relation.include?(RelationOverride)
       ActiveRecord::Relation.prepend(RelationOverride)
@@ -24,6 +22,8 @@ module SupportTableCache
     class << self
       prepend FindByOverride unless include?(FindByOverride)
       private :support_table_cache_by_attributes=
+      private :support_table_cache_impl
+      private :support_table_cache_impl=
     end
 
     after_commit :support_table_clear_cache_entries
@@ -32,6 +32,7 @@ module SupportTableCache
   class_methods do
     # Disable the caching behavior for this classes within the block. The disabled setting
     # for a class will always take precedence over the global setting.
+    #
     # @param disabled [Boolean] Caching will be disabled if this is true, enabled if false.
     # @yieldreturn The return value of the block.
     def disable_cache(disabled = true, &block)
@@ -46,6 +47,7 @@ module SupportTableCache
 
     # Enable the caching behavior for this classes within the block. The enabled setting
     # for a class will always take precedence over the global setting.
+    #
     # @return [void]
     def enable_cache
       disable_cache(false, &block)
@@ -53,6 +55,7 @@ module SupportTableCache
 
     # Load all records into the cache. You should only call this method on small tables with
     # a few dozen rows at most since it will crawl all of the rows in the table.
+    #
     # @return [void]
     def load_cache
       cache = current_support_table_cache
@@ -67,11 +70,22 @@ module SupportTableCache
       end
     end
 
+    # Set a class specific cache to use in lieu of the global cache.
+    #
+    # param cache [ActiveSupport::Cache::Store, Symbol] The cache instance to use. You can also
+    #   specify the value :memory to use an in memory cache.
+    # @return [void]
+    def support_table_cache=(cache)
+      cache = ActiveSupport::Cache::MemoryStore.new if cache == :memory
+      self.support_table_cache_impl = cache
+    end
+
     protected
 
     # Specify which attributes can be used for looking up records in the cache. Each value must
     # define a unique key, Multiple unique keys can be specified.
     # If multiple attributes are used to make up a unique key, then they should be passed in as an array.
+    #
     # @param attributes [String, Symbol, Array<String, Symbol>] Attributes that make up a unique key.
     # @param case_sensitive [Boolean] Indicate if strings should treated as case insensitive in the key.
     # @return [void]
@@ -93,13 +107,14 @@ module SupportTableCache
 
     def current_support_table_cache
       return nil? if support_table_cache_disabled?
-      support_table_cache || SupportTableCache.cache
+      support_table_cache_impl || SupportTableCache.cache
     end
   end
 
   class << self
     # Disable the caching behavior for all classes. If a block is specified, then caching is only
     # disabled for that block. If no block is specified, then caching is disabled globally.
+    #
     # @param disabled [Boolean] Caching will be disabled if this is true, enabled if false.
     # @yieldreturn The return value of the block.
     def disable(disabled = true, &block)
@@ -117,6 +132,7 @@ module SupportTableCache
 
     # Enable the caching behavior for all classes. If a block is specified, then caching is only
     # enabled for that block. If no block is specified, then caching is enabled globally.
+    #
     # @yieldreturn The return value of the block.
     def enable(&block)
       disable(false, &block)
@@ -134,10 +150,20 @@ module SupportTableCache
     end
 
     # Set the global cache to use. This will default to `Rails.cache` if you are running in
-    # a Rails environment. The value should be an instance of ActiveSupport::Cache::Store.
-    attr_writer :cache
+    # a Rails environment.
+    # param value [ActiveSupport::Cache::Store, Symbol] The cache instance to use. You can also
+    #   specify the value :memory to use an in memory cache.
+    # @return [void]
+    def cache=(value)
+      @cache = if value == :memory
+        ActiveSupport::Cache::MemoryStore.new
+      else
+        value
+      end
+    end
 
     # Get the global cache. Will default to `Rails.cache` if running in a Rails environment.
+    #
     # @return [ActiveSupport::Cache::Store]
     def cache
       if defined?(@cache)
@@ -149,6 +175,7 @@ module SupportTableCache
 
     # Generate a consistent cache key for a set of attributes. Returns nil if the attributes
     # are not cacheable.
+    #
     # @param klass [Class] The class that is being cached
     # @param attributes [Hash] The attributes used to find a record
     # @param key_attribute_names [Array] List of attributes that can be used as a key in the cache
@@ -234,6 +261,7 @@ module SupportTableCache
   end
 
   # Remove the cache entry for this record.
+  #
   # @return [void]
   def uncache
     cache_by_attributes = self.class.support_table_cache_by_attributes
