@@ -3,7 +3,7 @@
 if defined?(Rails::Railtie)
   module SupportTableCache
     class Railtie < Rails::Railtie
-      initializer do
+      initializer "support_table_cache" do
         SupportTableCache.cache = Rails.cache if defined?(Rails.cache)
       end
     end
