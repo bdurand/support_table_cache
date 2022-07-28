@@ -1,7 +1,5 @@
 # frozen_string_literal: true
 
-require_relative "support_table_cache/railtie"
-
 # This concern can be added to a model for a support table to add the ability to lookup
 # entries in these table using Rails.cache when calling find_by rather than hitting the
 # database every time.
@@ -157,11 +155,8 @@ module SupportTableCache
     #   specify the value :memory to use an in memory cache.
     # @return [void]
     def cache=(value)
-      @cache = if value == :memory
-        ActiveSupport::Cache::MemoryStore.new
-      else
-        value
-      end
+      value = ActiveSupport::Cache::MemoryStore.new if value == :memory
+      @cache = value
     end
 
     # Get the global cache. Will default to `Rails.cache` if running in a Rails environment.
