@@ -1,5 +1,7 @@
 # frozen_string_literal: true
 
+require_relative "support_table_cache/railtie"
+
 # This concern can be added to a model for a support table to add the ability to lookup
 # entries in these table using Rails.cache when calling find_by rather than hitting the
 # database every time.
