@@ -85,6 +85,41 @@ describe SupportTableCache do
     end
   end
 
+  describe "fetching" do
+    it "fetches records by attributes" do
+      expect(TestModel.fetch_by(name: "One")).to eq record_1
+      expect(SupportTableCache.cache.read(SupportTableCache.cache_key(TestModel, {name: "One"}, ["name"], true))).to eq record_1
+    end
+
+    it "fetches scoped records by attributes" do
+      expect(TestModel.where(group: "First").fetch_by(code: "one")).to eq record_1
+      expect(SupportTableCache.cache.read(SupportTableCache.cache_key(TestModel, {code: "one", group: "First"}, ["code", "group"], false))).to eq record_1
+    end
+
+    it "fetches scoped records by attributes with an empty scope" do
+      expect(TestModel.readonly.fetch_by(name: "One")).to eq record_1
+      expect(SupportTableCache.cache.read(SupportTableCache.cache_key(TestModel, {name: "One"}, ["name"], true))).to eq record_1
+    end
+
+    it "raises an ArgumentError if fetched query is not cacheable" do
+      expect { TestModel.fetch_by(code: "one") }.to raise_error(ArgumentError)
+    end
+
+    it "raises an ArgumentError if scoped fetched query is not cacheable" do
+      expect { TestModel.where(value: nil).fetch_by(code: "one") }.to raise_error(ArgumentError)
+    end
+
+    it "raises an ActiveRecord::RecordNotFoundError if fetch_by! does not find a record" do
+      expect(TestModel.fetch_by!(name: "One")).to eq record_1
+      expect { TestModel.fetch_by!(name: "Not Exist") }.to raise_error(ActiveRecord::RecordNotFound)
+    end
+
+    it "raises an ActiveRecord::RecordNotFoundError if scoped fetch_by! does not find a record" do
+      expect(TestModel.where(group: "First").fetch_by!(code: "one")).to eq record_1
+      expect { TestModel.where(group: "First").fetch_by!(code: "Not Exist") }.to raise_error(ActiveRecord::RecordNotFound)
+    end
+  end
+
   describe "clearing the cache" do
     it "can uncache a cached entry" do
       expect(TestModel.find_by(name: "One", code: "one").value).to eq 1
@@ -228,6 +263,16 @@ describe SupportTableCache do
         cache_key = SupportTableCache.cache_key(TestModel, attributes, attribute_names, case_sensitive)
         expect(cache.read(cache_key)).to eq record
       end
+    end
+  end
+
+  describe "associations" do
+    it "can override the belongs_to method to use the cache" do
+      parent = ParentModel.create!(test_model: record_1)
+      parent.test_model
+      TestModel.delete_all
+      parent = ParentModel.find(parent.id)
+      expect(parent.test_model).to eq record_1
     end
   end
 end

@@ -176,10 +176,10 @@ module SupportTableCache
     # Generate a consistent cache key for a set of attributes. Returns nil if the attributes
     # are not cacheable.
     #
-    # @param klass [Class] The class that is being cached
-    # @param attributes [Hash] The attributes used to find a record
-    # @param key_attribute_names [Array] List of attributes that can be used as a key in the cache
-    # @param case_sensitive [Boolean] Indicator if string values are case sensitive in the cache key
+    # @param klass [Class] The class that is being cached.
+    # @param attributes [Hash] The attributes used to find a record.
+    # @param key_attribute_names [Array] List of attributes that can be used as a key in the cache.
+    # @param case_sensitive [Boolean] Indicator if string values are case sensitive in the cache key.
     # @return [String]
     # @api private
     def cache_key(klass, attributes, key_attribute_names, case_sensitive)
@@ -227,6 +227,41 @@ module SupportTableCache
         super
       end
     end
+
+    # Same as find_by, but performs a safety check to confirm the query will hit the cache.
+    #
+    # @param attributes [Hash] Attibutes to find the record by.
+    # @raise ArgumentError If the query does not hit the cache.
+    def fetch_by(attributes)
+      find_by_attribute_names = support_table_find_by_attribute_names(attributes)
+      unless support_table_cache_by_attributes.any? { |attribute_names, _ci| attribute_names == find_by_attribute_names }
+        raise ArgumentError.new("#{name} does not cache queries by #{find_by_attribute_names.to_sentence}")
+      end
+      find_by(attributes)
+    end
+
+    # Same as find_by, but performs a safety check to confirm the query will hit the cache.
+    #
+    # @param attributes [Hash] Attibutes to find the record by.
+    # @raise ArgumentError If the query does not hit the cache.
+    # @raise ActiveRecord::RecordNotFound If the record does not exist.
+    def fetch_by!(attributes)
+      value = fetch_by(attributes)
+      if value.nil?
+        raise ActiveRecord::RecordNotFound.new("Couldn't find #{name}", name)
+      end
+      value
+    end
+
+    private
+
+    def support_table_find_by_attribute_names(attributes)
+      attributes ||= {}
+      if respond_to?(:scope_attributes) && scope_attributes.present?
+        attributes = scope_attributes.merge(attributes)
+      end
+      attributes.keys.map(&:to_s).sort
+    end
   end
 
   module RelationOverride
@@ -257,6 +292,41 @@ module SupportTableCache
       else
         super
       end
+    end
+
+    # Same as find_by, but performs a safety check to confirm the query will hit the cache.
+    #
+    # @param attributes [Hash] Attibutes to find the record by.
+    # @raise ArgumentError If the query does not hit the cache.
+    def fetch_by(attributes)
+      find_by_attribute_names = support_table_find_by_attribute_names(attributes)
+      unless klass.support_table_cache_by_attributes.any? { |attribute_names, _ci| attribute_names == find_by_attribute_names }
+        raise ArgumentError.new("#{name} does not cache queries by #{find_by_attribute_names.to_sentence}")
+      end
+      find_by(attributes)
+    end
+
+    # Same as find_by, but performs a safety check to confirm the query will hit the cache.
+    #
+    # @param attributes [Hash] Attibutes to find the record by.
+    # @raise ArgumentError If the query does not hit the cache.
+    # @raise ActiveRecord::RecordNotFound If the record does not exist.
+    def fetch_by!(attributes)
+      value = fetch_by(attributes)
+      if value.nil?
+        raise ActiveRecord::RecordNotFound.new("Couldn't find #{klass.name}", klass.name)
+      end
+      value
+    end
+
+    private
+
+    def support_table_find_by_attribute_names(attributes)
+      attributes ||= {}
+      if scope_attributes.present?
+        attributes = scope_attributes.merge(attributes)
+      end
+      attributes.keys.map(&:to_s).sort
     end
   end
 

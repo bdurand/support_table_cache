@@ -23,10 +23,26 @@ class TestModel < ActiveRecord::Base
 
   include SupportTableCache
 
+  cache_by :id
   cache_by :name
   cache_by [:group, :code], case_sensitive: false
 
   self.support_table_cache_ttl = 60
+end
+
+class ParentModel < ActiveRecord::Base
+  unless table_exists?
+    connection.create_table(table_name) do |t|
+      t.string :name, index: {unique: true}
+      t.integer :test_model_id
+    end
+  end
+
+  belongs_to :test_model
+
+  def test_model
+    TestModel.find_by(id: test_model_id) if test_model_id
+  end
 end
 
 SupportTableCache.cache = ActiveSupport::Cache::MemoryStore.new
