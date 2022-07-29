@@ -38,11 +38,10 @@ class ParentModel < ActiveRecord::Base
     end
   end
 
-  belongs_to :test_model
+  include SupportTableCache::Associations
 
-  def test_model
-    TestModel.find_by(id: test_model_id) if test_model_id
-  end
+  belongs_to :test_model
+  cache_belongs_to :test_model
 end
 
 SupportTableCache.cache = ActiveSupport::Cache::MemoryStore.new

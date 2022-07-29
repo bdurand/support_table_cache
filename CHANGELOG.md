@@ -10,7 +10,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Added fetch_by and fetch_by! methods that can verify the result will be cacheable.
 - Allow configuring cache storage on a per class basis.
 - Allow disabling caching on per class basis.
-- Added optimized in-memory cache implementation
+- Added optimized in-memory cache implementation.
+- Added support for caching belongs to assocations.
 
 ### Changed
 - Changed fiber local variables used for disabling the cache to thread local variables.

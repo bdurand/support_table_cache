@@ -265,14 +265,4 @@ describe SupportTableCache do
       end
     end
   end
-
-  describe "associations" do
-    it "can override the belongs_to method to use the cache" do
-      parent = ParentModel.create!(test_model: record_1)
-      parent.test_model
-      TestModel.delete_all
-      parent = ParentModel.find(parent.id)
-      expect(parent.test_model).to eq record_1
-    end
-  end
 end

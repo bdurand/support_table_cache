@@ -1,5 +1,6 @@
 # frozen_string_literal: true
 
+require_relative "support_table_cache/associations"
 require_relative "support_table_cache/in_memory_cache"
 
 # This concern can be added to a model for a support table to add the ability to lookup

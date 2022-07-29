@@ -89,6 +89,21 @@ SupportTableCache.enable do
 end
 ```
 
+### Belongs To Associations
+
+You can cache belongs to assocations to cacheable models by including the `SupportTableCache::Associations` module and then calling `cache_belongs_to` to specify which associations should be cached.
+
+The target class for the association must include the `SupportTableCache` module.
+
+```ruby
+class ParentModel <  ApplicationRecord
+  include SupportTableCache::Associations
+
+  belongs_to :my_model
+  cache_belongs_to :my_model
+end
+```
+
 ### Maintaining Data
 
 You can use the companion [support_table_data gem](https://github.com/bdurand/support_table_data) to add support for loading static data into your support tables as well as adding some useful helper functions.
