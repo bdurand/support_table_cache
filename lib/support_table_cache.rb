@@ -1,5 +1,7 @@
 # frozen_string_literal: true
 
+require_relative "support_table_cache/in_memory_cache"
+
 # This concern can be added to a model for a support table to add the ability to lookup
 # entries in these table using Rails.cache when calling find_by rather than hitting the
 # database every time.
@@ -73,10 +75,10 @@ module SupportTableCache
     # Set a class specific cache to use in lieu of the global cache.
     #
     # param cache [ActiveSupport::Cache::Store, Symbol] The cache instance to use. You can also
-    #   specify the value :memory to use an in memory cache.
+    #   specify the value :memory to use an optimized in memory cache.
     # @return [void]
     def support_table_cache=(cache)
-      cache = ActiveSupport::Cache::MemoryStore.new if cache == :memory
+      cache = InMemoryCache.new if cache == :memory
       self.support_table_cache_impl = cache
     end
 
@@ -152,10 +154,10 @@ module SupportTableCache
     # Set the global cache to use. This will default to `Rails.cache` if you are running in
     # a Rails environment.
     # param value [ActiveSupport::Cache::Store, Symbol] The cache instance to use. You can also
-    #   specify the value :memory to use an in memory cache.
+    #   specify the value :memory to use an optimized in memory cache.
     # @return [void]
     def cache=(value)
-      value = ActiveSupport::Cache::MemoryStore.new if value == :memory
+      value = InMemoryCache.new if value == :memory
       @cache = value
     end
 

@@ -194,7 +194,7 @@ describe SupportTableCache do
       save_cache = SupportTableCache.cache
       begin
         SupportTableCache.cache = :memory
-        expect(SupportTableCache.cache).to be_a(ActiveSupport::Cache::MemoryStore)
+        expect(SupportTableCache.cache).to be_a(SupportTableCache::InMemoryCache)
         expect(SupportTableCache.cache.object_id).to_not eq save_cache.object_id
       ensure
         SupportTableCache.cache = save_cache
@@ -203,7 +203,7 @@ describe SupportTableCache do
 
     it "can set a cache per class to an in memory cache" do
       TestModel.support_table_cache = :memory
-      expect(TestModel.send(:support_table_cache_impl)).to be_a(ActiveSupport::Cache::MemoryStore)
+      expect(TestModel.send(:support_table_cache_impl)).to be_a(SupportTableCache::InMemoryCache)
     ensure
       TestModel.support_table_cache = nil
     end
