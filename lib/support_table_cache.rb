@@ -15,6 +15,7 @@ module SupportTableCache
     # Set the time to live in seconds for records in the cache.
     class_attribute :support_table_cache_ttl, instance_accessor: false
 
+    # @api private
     class_attribute :support_table_cache_impl, instance_accessor: false
 
     unless ActiveRecord::Relation.include?(RelationOverride)
@@ -31,7 +32,7 @@ module SupportTableCache
     after_commit :support_table_clear_cache_entries
   end
 
-  class_methods do
+  module ClassMethods
     # Disable the caching behavior for this classes within the block. The disabled setting
     # for a class will always take precedence over the global setting.
     #
