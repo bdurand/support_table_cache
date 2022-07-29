@@ -7,7 +7,7 @@ module SupportTableCache
   #
   # This cache will not cache nil values. This is to prevent the cache from filling up with
   # cache misses since there is no purging mechanism.
-  class InMemoryCache
+  class MemoryCache
     def initialize
       @cache = {}
       @mutex = Mutex.new
@@ -16,20 +16,30 @@ module SupportTableCache
     def fetch(key, expires_in: nil)
       serialized_value, expire_at = @cache[key]
       if serialized_value.nil? || (expire_at && expire_at < Process.clock_gettime(Process::CLOCK_MONOTONIC))
-        value = yield
+        value = yield if block_given?
         return nil if value.nil?
-
-        if expires_in
-          expire_at = Process.clock_gettime(Process::CLOCK_MONOTONIC) + expires_in
-        end
-
-        serialized_value = Marshal.dump(yield)
-
-        @mutex.synchronize do
-          @cache[key] = [serialized_value, expire_at]
-        end
+        write(key, value, expires_in: expires_in)
+        serialized_value = Marshal.dump(value)
       end
       Marshal.load(serialized_value)
+    end
+
+    def read(key)
+      fetch(key)
+    end
+
+    def write(key, value, expires_in: nil)
+      return if value.nil?
+
+      if expires_in
+        expire_at = Process.clock_gettime(Process::CLOCK_MONOTONIC) + expires_in
+      end
+
+      serialized_value = Marshal.dump(value)
+
+      @mutex.synchronize do
+        @cache[key] = [serialized_value, expire_at]
+      end
     end
 
     def delete(key)

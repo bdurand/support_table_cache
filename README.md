@@ -72,7 +72,7 @@ You can also set a cache per class. You could do this, for instance, to set an i
   end
 ```
 
-You can disable the cache within a block either globally or only for a specific class. If the cache is disabled, then all queries will pass through to the database. You can also disable it globally which you may want to do in test mode if the cache interferes with your tests.
+You can disable the cache within a block either globally or only for a specific class. If the cache is disabled, then all queries will pass through to the database.
 
 ```ruby
 # Disable the cache globally
@@ -102,6 +102,27 @@ class ParentModel <  ApplicationRecord
   belongs_to :my_model
   cache_belongs_to :my_model
 end
+```
+
+### Testing
+
+Caching may interfere with tests by allowing data created in one test to leak into subsequent tests. You can resolve this by wrapping your tests with the `SupportTableCache.testing!` method.
+
+```
+# Rspec
+RSpec.configure do |config|
+  config.around do |example|
+    SupportTableCache.testing! { example.run }
+  end
+end
+
+# MiniTest (with the minitest-around gem)
+class Minitest::Spec
+  around do |tests|
+    SupportTableCache.testing!(&tests)
+  end
+=end
+
 ```
 
 ### Maintaining Data

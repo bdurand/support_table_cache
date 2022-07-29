@@ -229,7 +229,7 @@ describe SupportTableCache do
       save_cache = SupportTableCache.cache
       begin
         SupportTableCache.cache = :memory
-        expect(SupportTableCache.cache).to be_a(SupportTableCache::InMemoryCache)
+        expect(SupportTableCache.cache).to be_a(SupportTableCache::MemoryCache)
         expect(SupportTableCache.cache.object_id).to_not eq save_cache.object_id
       ensure
         SupportTableCache.cache = save_cache
@@ -238,7 +238,7 @@ describe SupportTableCache do
 
     it "can set a cache per class to an in memory cache" do
       TestModel.support_table_cache = :memory
-      expect(TestModel.send(:support_table_cache_impl)).to be_a(SupportTableCache::InMemoryCache)
+      expect(TestModel.send(:support_table_cache_impl)).to be_a(SupportTableCache::MemoryCache)
     ensure
       TestModel.support_table_cache = nil
     end
@@ -263,6 +263,24 @@ describe SupportTableCache do
         cache_key = SupportTableCache.cache_key(TestModel, attributes, attribute_names, case_sensitive)
         expect(cache.read(cache_key)).to eq record
       end
+    end
+  end
+
+  describe "testing!" do
+    it "initializes new caches within a block" do
+      normal_cache = SupportTableCache.cache
+
+      SupportTableCache.testing! do
+        testing_cache = SupportTableCache.cache
+        expect(testing_cache).to be_a(SupportTableCache::MemoryCache)
+        expect(testing_cache).to_not eq normal_cache
+
+        SupportTableCache.testing! do
+          expect(SupportTableCache.cache).to eq testing_cache
+        end
+      end
+
+      expect(SupportTableCache.cache).to eq normal_cache
     end
   end
 end

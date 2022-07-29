@@ -23,7 +23,6 @@ class TestModel < ActiveRecord::Base
 
   include SupportTableCache
 
-  cache_by :id
   cache_by :name
   cache_by [:group, :code], case_sensitive: false
 

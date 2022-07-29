@@ -12,6 +12,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Allow disabling caching on per class basis.
 - Added optimized in-memory cache implementation.
 - Added support for caching belongs to assocations.
+- Added test mode to intialize new caches within a test block.
 
 ### Changed
 - Changed fiber local variables used for disabling the cache to thread local variables.

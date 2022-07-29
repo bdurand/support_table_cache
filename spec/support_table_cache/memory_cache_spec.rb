@@ -2,11 +2,11 @@
 
 require_relative "../spec_helper"
 
-describe SupportTableCache::InMemoryCache do
-  let(:cache) { SupportTableCache::InMemoryCache.new }
+describe SupportTableCache::MemoryCache do
+  let(:cache) { SupportTableCache::MemoryCache.new }
 
   # rubocop:disable Style/RedundantFetchBlock
-  it "caches values" do
+  it "fetches cached values" do
     value = cache.fetch("foo") { :bar }
     expect(value).to eq :bar
 
@@ -35,11 +35,12 @@ describe SupportTableCache::InMemoryCache do
     expect(cached_value).to eq :bar
   end
 
-  it "deletes values" do
-    cache.fetch("foo") { :bar }
+  it "reads, writes, and deletes values" do
+    cache.write("foo", :bar)
+    expect(cache.fetch("foo")).to eq :bar
+    expect(cache.read("foo")).to eq :bar
     cache.delete("foo")
-    value = cache.fetch("foo") { :baz }
-    expect(value).to eq :baz
+    expect(cache.read("foo")).to eq nil
   end
 
   it "clears the cache" do

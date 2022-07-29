@@ -1,7 +1,7 @@
 # frozen_string_literal: true
 
 require_relative "support_table_cache/associations"
-require_relative "support_table_cache/in_memory_cache"
+require_relative "support_table_cache/memory_cache"
 
 # This concern can be added to a model for a support table to add the ability to lookup
 # entries in these table using Rails.cache when calling find_by rather than hitting the
@@ -80,7 +80,7 @@ module SupportTableCache
     #   specify the value :memory to use an optimized in memory cache.
     # @return [void]
     def support_table_cache=(cache)
-      cache = InMemoryCache.new if cache == :memory
+      cache = MemoryCache.new if cache == :memory
       self.support_table_cache_impl = cache
     end
 
@@ -111,7 +111,7 @@ module SupportTableCache
 
     def current_support_table_cache
       return nil? if support_table_cache_disabled?
-      support_table_cache_impl || SupportTableCache.cache
+      SupportTableCache.testing_cache || support_table_cache_impl || SupportTableCache.cache
     end
   end
 
@@ -159,7 +159,7 @@ module SupportTableCache
     #   specify the value :memory to use an optimized in memory cache.
     # @return [void]
     def cache=(value)
-      value = InMemoryCache.new if value == :memory
+      value = MemoryCache.new if value == :memory
       @cache = value
     end
 
@@ -167,10 +167,39 @@ module SupportTableCache
     #
     # @return [ActiveSupport::Cache::Store]
     def cache
-      if defined?(@cache)
+      if testing_cache
+        testing_cache
+      elsif defined?(@cache)
         @cache
       elsif defined?(Rails.cache)
         Rails.cache
+      end
+    end
+
+    # Enter test mode for a block. New caches will be used within each test mode block. You
+    # can use this to wrap your test methods so that cached values from one test don't show up
+    # in subsequent tests.
+    #
+    # @return [void]
+    def testing!(&block)
+      save_val = Thread.current.thread_variable_get(:support_table_cache_test_cache)
+      if save_val.nil?
+        Thread.current.thread_variable_set(:support_table_cache_test_cache, MemoryCache.new)
+      end
+      begin
+        yield
+      ensure
+        Thread.current.thread_variable_set(:support_table_cache_test_cache, save_val)
+      end
+    end
+
+    # Get the current test mode cache. This will only return a value inside a testing! block.
+    #
+    # @return [SupportTableCache::MemoryCache]
+    # @api private
+    def testing_cache
+      unless defined?(@cache) && @cache.nil?
+        Thread.current.thread_variable_get(:support_table_cache_test_cache)
       end
     end
 
