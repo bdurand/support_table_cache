@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 - Allow configuring cache storage on a per class basis.
 - Allow disabling caching on per class basis.
+- Optimized in memory cache
 
 ### Changed
 - Changed fiber local variables used for disabling the cache to thread local variables.
