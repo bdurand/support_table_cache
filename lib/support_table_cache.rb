@@ -95,7 +95,7 @@ module SupportTableCache
     # @return [void]
     def cache_by(attributes, case_sensitive: true)
       attributes = Array(attributes).map(&:to_s).sort.freeze
-      self.support_table_cache_by_attributes = (support_table_cache_by_attributes || []) + [[attributes, case_sensitive]]
+      self.support_table_cache_by_attributes = ((support_table_cache_by_attributes || []) + [[attributes, case_sensitive]]).uniq
     end
 
     private
