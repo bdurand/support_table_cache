@@ -16,6 +16,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 - Changed fiber local variables used for disabling the cache to thread local variables.
+- Using find_by! on a relation will now use the cache.
 
 ## 1.0.1
 

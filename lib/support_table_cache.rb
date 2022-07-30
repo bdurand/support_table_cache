@@ -324,6 +324,14 @@ module SupportTableCache
       end
     end
 
+    def find_by!(*args)
+      value = find_by(*args)
+      unless value
+        raise ActiveRecord::RecordNotFound.new("Couldn't find #{klass.name}", klass.name)
+      end
+      value
+    end
+
     # Same as find_by, but performs a safety check to confirm the query will hit the cache.
     #
     # @param attributes [Hash] Attibutes to find the record by.

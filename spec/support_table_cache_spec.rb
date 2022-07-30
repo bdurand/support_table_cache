@@ -54,11 +54,34 @@ describe SupportTableCache do
       expect(TestModel.find_by(group: "First", code: "one").value).to eq 1
     end
 
+    it "uses the cache when using find_by!" do
+      expect(TestModel.find_by!(name: "One")).to eq record_1
+      expect(SupportTableCache.cache.read(SupportTableCache.cache_key(TestModel, {name: "One"}, ["name"], true))).to eq record_1
+    end
+
+    it "raises and error when using find_by! and the record doesn't exist" do
+      expect { TestModel.find_by!(name: "Not Exist") }.to raise_error(ActiveRecord::RecordNotFound)
+    end
+
     it "does not use the cache when finding by a single attribute in a composite key" do
       expect(TestModel.find_by(code: "one")).to eq record_1
       expect(SupportTableCache.cache.read(SupportTableCache.cache_key(TestModel, {code: "one"}, ["code"], false))).to eq nil
     end
 
+    it "does not use the cache when finding by a non-cacheable attribute" do
+      expect(SupportTableCache.cache).to receive(:fetch).and_return(:value)
+      expect(TestModel.find_by(name: "One")).to eq :value
+
+      expect(SupportTableCache.cache).to receive(:fetch).and_return(:other_value)
+      expect(TestModel.find_by(code: "one", group: "First")).to eq :other_value
+
+      expect(SupportTableCache.cache).to_not receive(:fetch)
+      expect(TestModel.find_by(value: 1)).to eq record_1
+      expect(TestModel.find_by(name: "One", value: 1)).to eq record_1
+    end
+  end
+
+  describe "finding on a relation" do
     it "uses the cache when finding by multiple cacheable attributes with a relation chain" do
       expect(TestModel.where(group: "First").find_by(code: "one")).to eq record_1
       expect(SupportTableCache.cache.read(SupportTableCache.cache_key(TestModel, {code: "one", group: "First"}, ["code", "group"], false))).to eq record_1
@@ -72,16 +95,18 @@ describe SupportTableCache do
       expect(TestModel.where(code: "one").find_by(group: "First").value).to eq 1
     end
 
+    it "uses the cache when finding by multiple cacheable attributes with a relation chain with find_by!" do
+      expect(TestModel.where(group: "First").find_by!(code: "one")).to eq record_1
+      expect(SupportTableCache.cache.read(SupportTableCache.cache_key(TestModel, {code: "one", group: "First"}, ["code", "group"], false))).to eq record_1
+    end
+
+    it "raises an error when using find_by! on a relation and the record doesn't exist" do
+      expect { TestModel.where(group: "First").find_by!(code: "not exist") }.to raise_error(ActiveRecord::RecordNotFound)
+    end
+
     it "does not use the cache when finding by a non-cacheable attribute" do
-      expect(SupportTableCache.cache).to receive(:fetch).and_return(:value)
-      expect(TestModel.find_by(name: "One")).to eq :value
-
-      expect(SupportTableCache.cache).to receive(:fetch).and_return(:other_value)
-      expect(TestModel.find_by(code: "one", group: "First")).to eq :other_value
-
       expect(SupportTableCache.cache).to_not receive(:fetch)
-      expect(TestModel.find_by(value: 1)).to eq record_1
-      expect(TestModel.find_by(name: "One", value: 1)).to eq record_1
+      expect(TestModel.where(group: "First").find_by(value: 1)).to eq record_1
     end
   end
 
