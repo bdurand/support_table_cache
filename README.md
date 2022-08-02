@@ -104,6 +104,8 @@ class ParentModel <  ApplicationRecord
 end
 ```
 
+You can include `SupportTableCache::Associations` in your `ApplicationRecord` class to make association caching available on all models.
+
 ### Testing
 
 Caching may interfere with tests by allowing data created in one test to leak into subsequent tests. You can resolve this by wrapping your tests with the `SupportTableCache.testing!` method.
