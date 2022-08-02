@@ -56,13 +56,23 @@ By default, records will be cleaned up from the cache only when they are modifie
   end
 ```
 
-If you are in a Rails application, the `Rails.cache` will be used by default to cache records. Otherwise, you need to set the `ActiveSupport::Cache::CacheStore`` to use.
+If you are in a Rails application, the `Rails.cache` will be used by default to cache records. Otherwise, you need to set the `ActiveSupport::Cache::CacheStore` to use.
 
 ```ruby
 SupportTableCache.cache = ActiveSupport::Cache::MemoryStore.new
 ```
 
-You can also disable caching behavior entirely if you want or just within a block. You may want to disable it entirely in test mode if it interferes with your tests.
+You can also set a cache per class. You could do this, for instance, to set an in memory cache on models that will never change to avoid a network round trip to the cache server. You can use the special value `:memory` to do this.
+
+```ruby
+  class MyModel < ApplicationRecord
+    include SupportTableCache
+
+    self.support_table_cache = :memory
+  end
+```
+
+You can disable the cache within a block either globally or only for a specific class. If the cache is disabled, then all queries will pass through to the database.
 
 ```ruby
 # Disable the cache globally
@@ -72,9 +82,54 @@ SupportTableCache.enable do
   # Re-enable the cache for the block
   SupportTableCache.disable do
     # Disable it again
+    MySupportModel.enable_cache do
+      # Enable it only for the MySupportModel class
+    end
   end
 end
 ```
+
+### Belongs To Associations
+
+You can cache belongs to assocations to cacheable models by including the `SupportTableCache::Associations` module and then calling `cache_belongs_to` to specify which associations should be cached.
+
+The target class for the association must include the `SupportTableCache` module.
+
+```ruby
+class ParentModel <  ApplicationRecord
+  include SupportTableCache::Associations
+
+  belongs_to :my_model
+  cache_belongs_to :my_model
+end
+```
+
+You can include `SupportTableCache::Associations` in your `ApplicationRecord` class to make association caching available on all models.
+
+### Testing
+
+Caching may interfere with tests by allowing data created in one test to leak into subsequent tests. You can resolve this by wrapping your tests with the `SupportTableCache.testing!` method.
+
+```
+# Rspec
+RSpec.configure do |config|
+  config.around do |example|
+    SupportTableCache.testing! { example.run }
+  end
+end
+
+# MiniTest (with the minitest-around gem)
+class Minitest::Spec
+  around do |tests|
+    SupportTableCache.testing!(&tests)
+  end
+=end
+
+```
+
+### Maintaining Data
+
+You can use the companion [support_table_data gem](https://github.com/bdurand/support_table_data) to add support for loading static data into your support tables as well as adding some useful helper functions.
 
 ## Installation
 

@@ -1,0 +1,5 @@
+--no-private
+--title "SupportTableData"
+lib/**/*.rb
+-
+README.md

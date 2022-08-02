@@ -1,5 +1,8 @@
 # frozen_string_literal: true
 
+require_relative "support_table_cache/associations"
+require_relative "support_table_cache/memory_cache"
+
 # This concern can be added to a model for a support table to add the ability to lookup
 # entries in these table using Rails.cache when calling find_by rather than hitting the
 # database every time.
@@ -7,8 +10,14 @@ module SupportTableCache
   extend ActiveSupport::Concern
 
   included do
+    # @api private Used to store the list of attribute names used for caching.
     class_attribute :support_table_cache_by_attributes, instance_accessor: false
+
+    # Set the time to live in seconds for records in the cache.
     class_attribute :support_table_cache_ttl, instance_accessor: false
+
+    # @api private
+    class_attribute :support_table_cache_impl, instance_accessor: false
 
     unless ActiveRecord::Relation.include?(RelationOverride)
       ActiveRecord::Relation.prepend(RelationOverride)
@@ -17,43 +26,118 @@ module SupportTableCache
     class << self
       prepend FindByOverride unless include?(FindByOverride)
       private :support_table_cache_by_attributes=
+      private :support_table_cache_impl
+      private :support_table_cache_impl=
     end
 
     after_commit :support_table_clear_cache_entries
   end
 
-  class_methods do
+  module ClassMethods
+    # Disable the caching behavior for this classes within the block. The disabled setting
+    # for a class will always take precedence over the global setting.
+    #
+    # @param disabled [Boolean] Caching will be disabled if this is true, enabled if false.
+    # @yieldreturn The return value of the block.
+    def disable_cache(disabled = true, &block)
+      varname = "support_table_cache_disabled:#{name}"
+      save_val = Thread.current.thread_variable_get(varname)
+      begin
+        Thread.current.thread_variable_set(varname, !!disabled)
+      ensure
+        Thread.current.thread_variable_set(varname, save_val)
+      end
+    end
+
+    # Enable the caching behavior for this classes within the block. The enabled setting
+    # for a class will always take precedence over the global setting.
+    #
+    # @return [void]
+    def enable_cache
+      disable_cache(false, &block)
+    end
+
+    # Load all records into the cache. You should only call this method on small tables with
+    # a few dozen rows at most since it will crawl all of the rows in the table.
+    #
+    # @return [void]
+    def load_cache
+      cache = current_support_table_cache
+      return super if cache.nil?
+
+      find_each do |record|
+        support_table_cache_by_attributes.each do |attribute_names, case_sensitive|
+          attributes = record.attributes.select { |name, value| attribute_names.include?(name) }
+          cache_key = SupportTableCache.cache_key(self, attributes, attribute_names, case_sensitive)
+          cache.fetch(cache_key, expires_in: support_table_cache_ttl) { record }
+        end
+      end
+    end
+
+    # Set a class specific cache to use in lieu of the global cache.
+    #
+    # param cache [ActiveSupport::Cache::Store, Symbol] The cache instance to use. You can also
+    #   specify the value :memory to use an optimized in memory cache.
+    # @return [void]
+    def support_table_cache=(cache)
+      cache = MemoryCache.new if cache == :memory
+      self.support_table_cache_impl = cache
+    end
+
     protected
 
     # Specify which attributes can be used for looking up records in the cache. Each value must
     # define a unique key, Multiple unique keys can be specified.
     # If multiple attributes are used to make up a unique key, then they should be passed in as an array.
+    #
     # @param attributes [String, Symbol, Array<String, Symbol>] Attributes that make up a unique key.
     # @param case_sensitive [Boolean] Indicate if strings should treated as case insensitive in the key.
+    # @return [void]
     def cache_by(attributes, case_sensitive: true)
       attributes = Array(attributes).map(&:to_s).sort.freeze
-      self.support_table_cache_by_attributes = (support_table_cache_by_attributes || []) + [[attributes, case_sensitive]]
+      self.support_table_cache_by_attributes = ((support_table_cache_by_attributes || []) + [[attributes, case_sensitive]]).uniq
+    end
+
+    private
+
+    def support_table_cache_disabled?
+      current_block_value = Thread.current.thread_variable_get("support_table_cache_disabled:#{name}")
+      if current_block_value.nil?
+        SupportTableCache.disabled?
+      else
+        current_block_value
+      end
+    end
+
+    def current_support_table_cache
+      return nil? if support_table_cache_disabled?
+      SupportTableCache.testing_cache || support_table_cache_impl || SupportTableCache.cache
     end
   end
 
   class << self
-    # Disable the caching behavior. If a block is specified, then caching is only
-    # disabled for that block. If no block is specified, then caching is disabled
-    # globally.
+    # Disable the caching behavior for all classes. If a block is specified, then caching is only
+    # disabled for that block. If no block is specified, then caching is disabled globally.
+    #
     # @param disabled [Boolean] Caching will be disabled if this is true, enabled if false.
+    # @yieldreturn The return value of the block.
     def disable(disabled = true, &block)
       if block
-        save_val = Thread.current[:support_table_cache_disabled]
+        save_val = Thread.current.thread_variable_get(:support_table_cache_disabled)
         begin
-          Thread.current[:support_table_cache_disabled] = !!disabled
+          Thread.current.thread_variable_set(:support_table_cache_disabled, !!disabled)
         ensure
-          Thread.current[:support_table_cache_disabled] = save_val
+          Thread.current.thread_variable_set(:support_table_cache_disabled, save_val)
         end
       else
         @disabled = !!disabled
       end
     end
 
+    # Enable the caching behavior for all classes. If a block is specified, then caching is only
+    # enabled for that block. If no block is specified, then caching is enabled globally.
+    #
+    # @yieldreturn The return value of the block.
     def enable(&block)
       disable(false, &block)
     end
@@ -61,7 +145,7 @@ module SupportTableCache
     # Return true if caching has been disabled.
     # @return [Boolean]
     def disabled?
-      block_value = Thread.current[:support_table_cache_disabled]
+      block_value = Thread.current.thread_variable_get(:support_table_cache_disabled)
       if block_value.nil?
         !!(defined?(@disabled) && @disabled)
       else
@@ -69,19 +153,64 @@ module SupportTableCache
       end
     end
 
-    attr_writer :cache
+    # Set the global cache to use. This will default to `Rails.cache` if you are running in
+    # a Rails environment.
+    # param value [ActiveSupport::Cache::Store, Symbol] The cache instance to use. You can also
+    #   specify the value :memory to use an optimized in memory cache.
+    # @return [void]
+    def cache=(value)
+      value = MemoryCache.new if value == :memory
+      @cache = value
+    end
 
+    # Get the global cache. Will default to `Rails.cache` if running in a Rails environment.
+    #
+    # @return [ActiveSupport::Cache::Store]
     def cache
-      if defined?(@cache)
+      if testing_cache
+        testing_cache
+      elsif defined?(@cache)
         @cache
       elsif defined?(Rails.cache)
         Rails.cache
       end
     end
 
+    # Enter test mode for a block. New caches will be used within each test mode block. You
+    # can use this to wrap your test methods so that cached values from one test don't show up
+    # in subsequent tests.
+    #
+    # @return [void]
+    def testing!(&block)
+      save_val = Thread.current.thread_variable_get(:support_table_cache_test_cache)
+      if save_val.nil?
+        Thread.current.thread_variable_set(:support_table_cache_test_cache, MemoryCache.new)
+      end
+      begin
+        yield
+      ensure
+        Thread.current.thread_variable_set(:support_table_cache_test_cache, save_val)
+      end
+    end
+
+    # Get the current test mode cache. This will only return a value inside a testing! block.
+    #
+    # @return [SupportTableCache::MemoryCache]
+    # @api private
+    def testing_cache
+      unless defined?(@cache) && @cache.nil?
+        Thread.current.thread_variable_get(:support_table_cache_test_cache)
+      end
+    end
+
     # Generate a consistent cache key for a set of attributes. Returns nil if the attributes
     # are not cacheable.
-    # @param klass [Class] The class to
+    #
+    # @param klass [Class] The class that is being cached.
+    # @param attributes [Hash] The attributes used to find a record.
+    # @param key_attribute_names [Array] List of attributes that can be used as a key in the cache.
+    # @param case_sensitive [Boolean] Indicator if string values are case sensitive in the cache key.
+    # @return [String]
     # @api private
     def cache_key(klass, attributes, key_attribute_names, case_sensitive)
       return nil if attributes.blank? || key_attribute_names.blank?
@@ -105,7 +234,8 @@ module SupportTableCache
   module FindByOverride
     # Override for the find_by method that looks in the cache first.
     def find_by(*args)
-      return super if SupportTableCache.cache.nil? || SupportTableCache.disabled?
+      cache = current_support_table_cache
+      return super if cache.nil?
 
       cache_key = nil
       attributes = args.first if args.size == 1 && args.first.is_a?(Hash)
@@ -122,10 +252,45 @@ module SupportTableCache
       end
 
       if cache_key
-        SupportTableCache.cache.fetch(cache_key, expires_in: support_table_cache_ttl) { super }
+        cache.fetch(cache_key, expires_in: support_table_cache_ttl) { super }
       else
         super
       end
+    end
+
+    # Same as find_by, but performs a safety check to confirm the query will hit the cache.
+    #
+    # @param attributes [Hash] Attibutes to find the record by.
+    # @raise ArgumentError If the query does not hit the cache.
+    def fetch_by(attributes)
+      find_by_attribute_names = support_table_find_by_attribute_names(attributes)
+      unless support_table_cache_by_attributes.any? { |attribute_names, _ci| attribute_names == find_by_attribute_names }
+        raise ArgumentError.new("#{name} does not cache queries by #{find_by_attribute_names.to_sentence}")
+      end
+      find_by(attributes)
+    end
+
+    # Same as find_by, but performs a safety check to confirm the query will hit the cache.
+    #
+    # @param attributes [Hash] Attibutes to find the record by.
+    # @raise ArgumentError If the query does not hit the cache.
+    # @raise ActiveRecord::RecordNotFound If the record does not exist.
+    def fetch_by!(attributes)
+      value = fetch_by(attributes)
+      if value.nil?
+        raise ActiveRecord::RecordNotFound.new("Couldn't find #{name}", name)
+      end
+      value
+    end
+
+    private
+
+    def support_table_find_by_attribute_names(attributes)
+      attributes ||= {}
+      if respond_to?(:scope_attributes) && scope_attributes.present?
+        attributes = scope_attributes.merge(attributes)
+      end
+      attributes.keys.map(&:to_s).sort
     end
   end
 
@@ -133,7 +298,9 @@ module SupportTableCache
     # Override for the find_by method that looks in the cache first.
     def find_by(*args)
       return super unless klass.include?(SupportTableCache)
-      return super if SupportTableCache.cache.nil? || SupportTableCache.disabled?
+
+      cache = klass.send(:current_support_table_cache)
+      return super if cache.nil?
 
       cache_key = nil
       attributes = args.first if args.size == 1 && args.first.is_a?(Hash)
@@ -151,18 +318,65 @@ module SupportTableCache
       end
 
       if cache_key
-        SupportTableCache.cache.fetch(cache_key, expires_in: support_table_cache_ttl) { super }
+        cache.fetch(cache_key, expires_in: support_table_cache_ttl) { super }
       else
         super
       end
     end
+
+    def find_by!(*args)
+      value = find_by(*args)
+      unless value
+        raise ActiveRecord::RecordNotFound.new("Couldn't find #{klass.name}", klass.name)
+      end
+      value
+    end
+
+    # Same as find_by, but performs a safety check to confirm the query will hit the cache.
+    #
+    # @param attributes [Hash] Attibutes to find the record by.
+    # @raise ArgumentError If the query does not hit the cache.
+    def fetch_by(attributes)
+      find_by_attribute_names = support_table_find_by_attribute_names(attributes)
+      unless klass.support_table_cache_by_attributes.any? { |attribute_names, _ci| attribute_names == find_by_attribute_names }
+        raise ArgumentError.new("#{name} does not cache queries by #{find_by_attribute_names.to_sentence}")
+      end
+      find_by(attributes)
+    end
+
+    # Same as find_by, but performs a safety check to confirm the query will hit the cache.
+    #
+    # @param attributes [Hash] Attibutes to find the record by.
+    # @raise ArgumentError If the query does not hit the cache.
+    # @raise ActiveRecord::RecordNotFound If the record does not exist.
+    def fetch_by!(attributes)
+      value = fetch_by(attributes)
+      if value.nil?
+        raise ActiveRecord::RecordNotFound.new("Couldn't find #{klass.name}", klass.name)
+      end
+      value
+    end
+
+    private
+
+    def support_table_find_by_attribute_names(attributes)
+      attributes ||= {}
+      if scope_attributes.present?
+        attributes = scope_attributes.merge(attributes)
+      end
+      attributes.keys.map(&:to_s).sort
+    end
   end
 
   # Remove the cache entry for this record.
+  #
   # @return [void]
   def uncache
     cache_by_attributes = self.class.support_table_cache_by_attributes
-    return if cache_by_attributes.blank? || SupportTableCache.cache.nil?
+    return if cache_by_attributes.blank?
+
+    cache = self.class.send(:current_support_table_cache)
+    return if cache.nil?
 
     cache_by_attributes.each do |attribute_names, case_sensitive|
       attributes = {}
@@ -170,7 +384,7 @@ module SupportTableCache
         attributes[name] = self[name]
       end
       cache_key = SupportTableCache.cache_key(self.class, attributes, attribute_names, case_sensitive)
-      SupportTableCache.cache.delete(cache_key)
+      cache.delete(cache_key)
     end
   end
 
@@ -181,7 +395,10 @@ module SupportTableCache
   # and after the change.
   def support_table_clear_cache_entries
     cache_by_attributes = self.class.support_table_cache_by_attributes
-    return if cache_by_attributes.blank? || SupportTableCache.cache.nil?
+    return if cache_by_attributes.blank?
+
+    cache = self.class.send(:current_support_table_cache)
+    return if cache.nil?
 
     cache_by_attributes.each do |attribute_names, case_sensitive|
       attributes_before = {} if saved_change_to_id.blank? || saved_change_to_id.first.present?
@@ -196,7 +413,7 @@ module SupportTableCache
       end
       [attributes_before, attributes_after].compact.uniq.each do |attributes|
         cache_key = SupportTableCache.cache_key(self.class, attributes, attribute_names, case_sensitive)
-        SupportTableCache.cache.delete(cache_key)
+        cache.delete(cache_key)
       end
     end
   end
