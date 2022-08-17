@@ -3,9 +3,9 @@
 [![Continuous Integration](https://github.com/bdurand/support_table_cache/actions/workflows/continuous_integration.yml/badge.svg)](https://github.com/bdurand/support_table_cache/actions/workflows/continuous_integration.yml)
 [![Ruby Style Guide](https://img.shields.io/badge/code_style-standard-brightgreen.svg)](https://github.com/testdouble/standard)
 
-This gem adds caching for ActiveRecord support table models. These are models which have a unique key (i.e. a unique `name` attribute, etc.) and which have a limited number of entries (a few hundred at most). These are often models added do normalize the data structure.
+This gem adds caching for ActiveRecord support table models. These are models which have a unique key (i.e. a unique `name` attribute, etc.) and which have a limited number of entries (a few hundred at most). These are often models added to normalize the data structure also known as lookup tables.
 
-Rows from these kinds of tables are rarely inserted, updated, or deleted, but are queried very frequently. To take advantage of this behavior, this gem adds automatic caching for records when using the `find_by` method. This is most useful in situations where you have a unique key but need to get the database row for that key.
+Rows from these kinds of tables are rarely inserted, updated, or deleted, but are queried very frequently. To take advantage of this behavior, this gem adds automatic caching for records when using the `find_by` method and `belongs_to` associations.
 
 For instance, suppose you have a model `Status` that has a unique name attribute and you need to process a bunch of records from a data source that includes the status name. In order to do anything, you'll need to lookup each status by name to get the database id:
 
@@ -20,7 +20,7 @@ With this gem, you can avoid the database query for the `find_by` call. You don'
 
 ## Usage
 
-To use the gem, you need to include it in you models and then specify which attributes can be used for caching with the `cache_by` method. A caching attribute must be a unique key on the model. For a composite key, you can specify an array of attributes. If any of the attributes are case insensitive strings, you need to specify that as well.
+To use the gem, you need to include it in you models and then specify which attributes can be used for caching with the `cache_by` method. A caching attribute must be a unique key on the model. For a composite unique key, you can specify an array of attributes. If any of the attributes are case insensitive strings, you need to specify that as well.
 
 ```ruby
   class MyModel < ApplicationRecord
@@ -56,13 +56,15 @@ By default, records will be cleaned up from the cache only when they are modifie
   end
 ```
 
+### Setting The Cache
+
 If you are in a Rails application, the `Rails.cache` will be used by default to cache records. Otherwise, you need to set the `ActiveSupport::Cache::CacheStore` to use.
 
 ```ruby
 SupportTableCache.cache = ActiveSupport::Cache::MemoryStore.new
 ```
 
-You can also set a cache per class. You could do this, for instance, to set an in memory cache on models that will never change to avoid a network round trip to the cache server. You can use the special value `:memory` to do this.
+You can also set a cache per class. You could do this, for instance, to set an in memory cache on models that are never changed to avoid a network round trip to the cache server. You can use the special value `:memory` to do this.
 
 ```ruby
   class MyModel < ApplicationRecord
@@ -71,6 +73,10 @@ You can also set a cache per class. You could do this, for instance, to set an i
     self.support_table_cache = :memory
   end
 ```
+
+Note that in memory caches exist separately within each process and will not be cleared when records are changed in the database. The only way to refresh elements in an in memory cache is to restart the process or set the `support_table_cache_ttl` value so that entries will expire.
+
+### Disabling Caching
 
 You can disable the cache within a block either globally or only for a specific class. If the cache is disabled, then all queries will pass through to the database.
 
@@ -89,9 +95,9 @@ SupportTableCache.enable do
 end
 ```
 
-### Belongs To Associations
+### Caching Belongs To Associations
 
-You can cache belongs to assocations to cacheable models by including the `SupportTableCache::Associations` module and then calling `cache_belongs_to` to specify which associations should be cached.
+You can cache belongs to assocations for cacheable models by including the `SupportTableCache::Associations` module and then calling `cache_belongs_to` to specify which associations should be cached.
 
 The target class for the association must include the `SupportTableCache` module.
 

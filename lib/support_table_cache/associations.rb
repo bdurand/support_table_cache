@@ -9,17 +9,21 @@ module SupportTableCache
       # Specify that a belongs_to association should use the cache. This will override the reader method
       # for the association so that it queries from the cache. The association must already be defined.
       #
+      # If you need cached associations to be cleared when data changes, then the associated class will
+      # need to include SupportTableCache and cache by the primary key for the association.
+      #
       # @param association_name [Symbol, String] The association name to cache.
       # @return [void]
+      # @raise ArgumentError If the association is not defined or if it has a runtime scope.
       def cache_belongs_to(association_name)
         reflection = reflections[association_name.to_s]
 
         unless reflection&.belongs_to?
-          raise ArguementError.new("The belongs_to #{association_name} association is not defined")
+          raise ArgumentError.new("The belongs_to #{association_name} association is not defined")
         end
 
         if reflection.scopes.present?
-          raise ArguementError.new("Cannot cache belongs_to #{association_name} association because it has a scope")
+          raise ArgumentError.new("Cannot cache belongs_to #{association_name} association because it has a scope")
         end
 
         class_eval <<~RUBY, __FILE__, __LINE__ + 1
