@@ -1,11 +1,12 @@
 # frozen_string_literal: true
 
 require_relative "support_table_cache/associations"
+require_relative "support_table_cache/find_by_override"
+require_relative "support_table_cache/relation_override"
 require_relative "support_table_cache/memory_cache"
 
-# This concern can be added to a model for a support table to add the ability to lookup
-# entries in these table using Rails.cache when calling find_by rather than hitting the
-# database every time.
+# This concern can be added to a model to add the ability to look up entries in the table
+# using Rails.cache when calling find_by rather than hitting the database every time.
 module SupportTableCache
   extend ActiveSupport::Concern
 
@@ -34,10 +35,10 @@ module SupportTableCache
   end
 
   module ClassMethods
-    # Disable the caching behavior for this classes within the block. The disabled setting
+    # Disable the caching behavior for this class within the block. The disabled setting
     # for a class will always take precedence over the global setting.
     #
-    # @param disabled [Boolean] Caching will be disabled if this is true, enabled if false.
+    # @param disabled [Boolean] Caching will be disabled if this is true and enabled if false.
     # @yieldreturn The return value of the block.
     def disable_cache(disabled = true, &block)
       varname = "support_table_cache_disabled:#{name}"
@@ -49,7 +50,7 @@ module SupportTableCache
       end
     end
 
-    # Enable the caching behavior for this classes within the block. The enabled setting
+    # Enable the caching behavior for this class within the block. The enabled setting
     # for a class will always take precedence over the global setting.
     #
     # @return [void]
@@ -58,7 +59,7 @@ module SupportTableCache
     end
 
     # Load all records into the cache. You should only call this method on small tables with
-    # a few dozen rows at most since it will crawl all of the rows in the table.
+    # a few dozen rows at most because it will load each row one at a time.
     #
     # @return [void]
     def load_cache
@@ -74,10 +75,10 @@ module SupportTableCache
       end
     end
 
-    # Set a class specific cache to use in lieu of the global cache.
+    # Set a class-specific cache to use in lieu of the global cache.
     #
-    # param cache [ActiveSupport::Cache::Store, Symbol] The cache instance to use. You can also
-    #   specify the value :memory to use an optimized in memory cache.
+    # @param cache [ActiveSupport::Cache::Store, Symbol] The cache instance to use. You can also
+    #   specify the value :memory to use an optimized in-memory cache.
     # @return [void]
     def support_table_cache=(cache)
       cache = MemoryCache.new if cache == :memory
@@ -119,7 +120,7 @@ module SupportTableCache
     # Disable the caching behavior for all classes. If a block is specified, then caching is only
     # disabled for that block. If no block is specified, then caching is disabled globally.
     #
-    # @param disabled [Boolean] Caching will be disabled if this is true, enabled if false.
+    # @param disabled [Boolean] Caching will be disabled if this is true and enabled if false.
     # @yieldreturn The return value of the block.
     def disable(disabled = true, &block)
       if block
@@ -153,17 +154,16 @@ module SupportTableCache
       end
     end
 
-    # Set the global cache to use. This will default to `Rails.cache` if you are running in
-    # a Rails environment.
-    # param value [ActiveSupport::Cache::Store, Symbol] The cache instance to use. You can also
-    #   specify the value :memory to use an optimized in memory cache.
+    # Set the global cache to use.
+    # @param value [ActiveSupport::Cache::Store, Symbol] The cache instance to use. You can also
+    #   specify the value :memory to use an optimized in-memory cache.
     # @return [void]
     def cache=(value)
       value = MemoryCache.new if value == :memory
       @cache = value
     end
 
-    # Get the global cache. Will default to `Rails.cache` if running in a Rails environment.
+    # Get the global cache (will default to `Rails.cache` if running in a Rails environment).
     #
     # @return [ActiveSupport::Cache::Store]
     def cache
@@ -193,7 +193,7 @@ module SupportTableCache
       end
     end
 
-    # Get the current test mode cache. This will only return a value inside a testing! block.
+    # Get the current test mode cache. This will only return a value inside of a `testing!` block.
     #
     # @return [SupportTableCache::MemoryCache]
     # @api private
@@ -203,13 +203,13 @@ module SupportTableCache
       end
     end
 
-    # Generate a consistent cache key for a set of attributes. Returns nil if the attributes
+    # Generate a consistent cache key for a set of attributes. It will return nil if the attributes
     # are not cacheable.
     #
     # @param klass [Class] The class that is being cached.
     # @param attributes [Hash] The attributes used to find a record.
     # @param key_attribute_names [Array] List of attributes that can be used as a key in the cache.
-    # @param case_sensitive [Boolean] Indicator if string values are case sensitive in the cache key.
+    # @param case_sensitive [Boolean] Indicator if string values are case-sensitive in the cache key.
     # @return [String]
     # @api private
     def cache_key(klass, attributes, key_attribute_names, case_sensitive)
@@ -228,143 +228,6 @@ module SupportTableCache
       end
 
       [klass.name, sorted_attributes]
-    end
-  end
-
-  module FindByOverride
-    # Override for the find_by method that looks in the cache first.
-    def find_by(*args)
-      cache = current_support_table_cache
-      return super if cache.nil?
-
-      cache_key = nil
-      attributes = args.first if args.size == 1 && args.first.is_a?(Hash)
-
-      if respond_to?(:scope_attributes) && scope_attributes.present?
-        attributes = scope_attributes.merge(attributes || {})
-      end
-
-      if attributes.present?
-        support_table_cache_by_attributes.each do |attribute_names, case_sensitive|
-          cache_key = SupportTableCache.cache_key(self, attributes, attribute_names, case_sensitive)
-          break if cache_key
-        end
-      end
-
-      if cache_key
-        cache.fetch(cache_key, expires_in: support_table_cache_ttl) { super }
-      else
-        super
-      end
-    end
-
-    # Same as find_by, but performs a safety check to confirm the query will hit the cache.
-    #
-    # @param attributes [Hash] Attibutes to find the record by.
-    # @raise ArgumentError If the query does not hit the cache.
-    def fetch_by(attributes)
-      find_by_attribute_names = support_table_find_by_attribute_names(attributes)
-      unless support_table_cache_by_attributes.any? { |attribute_names, _ci| attribute_names == find_by_attribute_names }
-        raise ArgumentError.new("#{name} does not cache queries by #{find_by_attribute_names.to_sentence}")
-      end
-      find_by(attributes)
-    end
-
-    # Same as find_by, but performs a safety check to confirm the query will hit the cache.
-    #
-    # @param attributes [Hash] Attibutes to find the record by.
-    # @raise ArgumentError If the query does not hit the cache.
-    # @raise ActiveRecord::RecordNotFound If the record does not exist.
-    def fetch_by!(attributes)
-      value = fetch_by(attributes)
-      if value.nil?
-        raise ActiveRecord::RecordNotFound.new("Couldn't find #{name}", name)
-      end
-      value
-    end
-
-    private
-
-    def support_table_find_by_attribute_names(attributes)
-      attributes ||= {}
-      if respond_to?(:scope_attributes) && scope_attributes.present?
-        attributes = scope_attributes.merge(attributes)
-      end
-      attributes.keys.map(&:to_s).sort
-    end
-  end
-
-  module RelationOverride
-    # Override for the find_by method that looks in the cache first.
-    def find_by(*args)
-      return super unless klass.include?(SupportTableCache)
-
-      cache = klass.send(:current_support_table_cache)
-      return super if cache.nil?
-
-      cache_key = nil
-      attributes = args.first if args.size == 1 && args.first.is_a?(Hash)
-
-      # Apply any attributes from the current relation chain
-      if scope_attributes.present?
-        attributes = scope_attributes.merge(attributes || {})
-      end
-
-      if attributes.present?
-        support_table_cache_by_attributes.each do |attribute_names, case_sensitive|
-          cache_key = SupportTableCache.cache_key(klass, attributes, attribute_names, case_sensitive)
-          break if cache_key
-        end
-      end
-
-      if cache_key
-        cache.fetch(cache_key, expires_in: support_table_cache_ttl) { super }
-      else
-        super
-      end
-    end
-
-    def find_by!(*args)
-      value = find_by(*args)
-      unless value
-        raise ActiveRecord::RecordNotFound.new("Couldn't find #{klass.name}", klass.name)
-      end
-      value
-    end
-
-    # Same as find_by, but performs a safety check to confirm the query will hit the cache.
-    #
-    # @param attributes [Hash] Attibutes to find the record by.
-    # @raise ArgumentError If the query does not hit the cache.
-    def fetch_by(attributes)
-      find_by_attribute_names = support_table_find_by_attribute_names(attributes)
-      unless klass.support_table_cache_by_attributes.any? { |attribute_names, _ci| attribute_names == find_by_attribute_names }
-        raise ArgumentError.new("#{name} does not cache queries by #{find_by_attribute_names.to_sentence}")
-      end
-      find_by(attributes)
-    end
-
-    # Same as find_by, but performs a safety check to confirm the query will hit the cache.
-    #
-    # @param attributes [Hash] Attibutes to find the record by.
-    # @raise ArgumentError If the query does not hit the cache.
-    # @raise ActiveRecord::RecordNotFound If the record does not exist.
-    def fetch_by!(attributes)
-      value = fetch_by(attributes)
-      if value.nil?
-        raise ActiveRecord::RecordNotFound.new("Couldn't find #{klass.name}", klass.name)
-      end
-      value
-    end
-
-    private
-
-    def support_table_find_by_attribute_names(attributes)
-      attributes ||= {}
-      if scope_attributes.present?
-        attributes = scope_attributes.merge(attributes)
-      end
-      attributes.keys.map(&:to_s).sort
     end
   end
 

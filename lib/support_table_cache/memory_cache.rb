@@ -2,11 +2,11 @@
 
 module SupportTableCache
   # An optimized cache implementation that can be used when all records can easily fit
-  # in memory and they are never changed. It is intended for use with small, static support
+  # in memory and are never changed. It is intended for use with small, static support
   # tables only.
   #
-  # This cache will not cache nil values. This is to prevent the cache from filling up with
-  # cache misses since there is no purging mechanism.
+  # This cache will not store nil values. This is to prevent the cache from filling up with
+  # cache misses because there is no purging mechanism.
   class MemoryCache
     def initialize
       @cache = {}
