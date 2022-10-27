@@ -93,10 +93,21 @@ module SupportTableCache
     #
     # @param attributes [String, Symbol, Array<String, Symbol>] Attributes that make up a unique key.
     # @param case_sensitive [Boolean] Indicate if strings should treated as case insensitive in the key.
+    # @param where [Hash] A hash representing a hard coded set of attributes that must match a query in order
+    #   to cache the result. If a model has a default scope, then this value should be set to match the
+    #   where clause in that scope.
     # @return [void]
-    def cache_by(attributes, case_sensitive: true)
+    def cache_by(attributes, case_sensitive: true, where: nil)
       attributes = Array(attributes).map(&:to_s).sort.freeze
-      self.support_table_cache_by_attributes = ((support_table_cache_by_attributes || []) + [[attributes, case_sensitive]]).uniq
+
+      if where
+        unless where.is_a?(Hash)
+          raise ArgumentError.new("where must be a Hash")
+        end
+        where = where.stringify_keys
+      end
+
+      self.support_table_cache_by_attributes = ((support_table_cache_by_attributes || []) + [[attributes, case_sensitive, where]]).uniq
     end
 
     private

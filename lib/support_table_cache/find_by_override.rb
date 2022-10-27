@@ -9,14 +9,21 @@ module SupportTableCache
       return super if cache.nil?
 
       cache_key = nil
-      attributes = args.first if args.size == 1 && args.first.is_a?(Hash)
+      attributes = (args.size == 1 && args.first.is_a?(Hash) ? args.first.stringify_keys : {})
 
       if respond_to?(:scope_attributes) && scope_attributes.present?
-        attributes = scope_attributes.merge(attributes || {})
+        attributes = scope_attributes.stringify_keys.merge(attributes)
       end
 
       if attributes.present?
-        support_table_cache_by_attributes.each do |attribute_names, case_sensitive|
+        support_table_cache_by_attributes.each do |attribute_names, case_sensitive, where|
+          where&.each do |name, value|
+            if attributes.include?(name) && attributes[name] == value
+              attributes.delete(name)
+            else
+              return super
+            end
+          end
           cache_key = SupportTableCache.cache_key(self, attributes, attribute_names, case_sensitive)
           break if cache_key
         end
@@ -35,7 +42,7 @@ module SupportTableCache
     # @raise ArgumentError if the query cannot use the cache.
     def fetch_by(attributes)
       find_by_attribute_names = support_table_find_by_attribute_names(attributes)
-      unless support_table_cache_by_attributes.any? { |attribute_names, _ci| attribute_names == find_by_attribute_names }
+      unless support_table_cache_by_attributes.any? { |attribute_names, _ci, _where| attribute_names == find_by_attribute_names }
         raise ArgumentError.new("#{name} does not cache queries by #{find_by_attribute_names.to_sentence}")
       end
       find_by(attributes)

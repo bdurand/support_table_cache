@@ -12,15 +12,22 @@ module SupportTableCache
       return super if cache.nil?
 
       cache_key = nil
-      attributes = args.first if args.size == 1 && args.first.is_a?(Hash)
+      attributes = (args.size == 1 && args.first.is_a?(Hash) ? args.first.stringify_keys : {})
 
       # Apply any attributes from the current relation chain
       if scope_attributes.present?
-        attributes = scope_attributes.merge(attributes || {})
+        attributes = scope_attributes.stringify_keys.merge(attributes)
       end
 
       if attributes.present?
-        support_table_cache_by_attributes.each do |attribute_names, case_sensitive|
+        support_table_cache_by_attributes.each do |attribute_names, case_sensitive, where|
+          where&.each do |name, value|
+            if attributes.include?(name) && attributes[name] == value
+              attributes.delete(name)
+            else
+              return super
+            end
+          end
           cache_key = SupportTableCache.cache_key(klass, attributes, attribute_names, case_sensitive)
           break if cache_key
         end

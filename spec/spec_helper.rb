@@ -43,6 +43,22 @@ class ParentModel < ActiveRecord::Base
   cache_belongs_to :test_model
 end
 
+class DefaultScopeModel < ActiveRecord::Base
+  unless table_exists?
+    connection.create_table(table_name) do |t|
+      t.string :name, index: {unique: true}
+      t.string :label
+      t.datetime :deleted_at, null: true
+    end
+  end
+
+  include SupportTableCache
+
+  cache_by :name, where: {deleted_at: nil}
+
+  default_scope { where(deleted_at: nil) }
+end
+
 SupportTableCache.cache = ActiveSupport::Cache::MemoryStore.new
 
 RSpec.configure do |config|
@@ -50,6 +66,8 @@ RSpec.configure do |config|
 
   config.before do
     TestModel.delete_all
+    ParentModel.delete_all
+    DefaultScopeModel.unscoped.delete_all
     SupportTableCache.cache.clear
   end
 end

@@ -110,6 +110,27 @@ describe SupportTableCache do
     end
   end
 
+  describe "finding with a default scope" do
+    it "can ignore a default scope for caching" do
+      record = DefaultScopeModel.create!(name: "one")
+      expect(DefaultScopeModel.find_by(name: "one")).to eq record
+      expect(SupportTableCache.cache.read(SupportTableCache.cache_key(DefaultScopeModel, {name: "one"}, ["name"], true))).to eq record
+    end
+
+    it "can ignore a scope for caching" do
+      record = DefaultScopeModel.create!(name: "one")
+      expect(DefaultScopeModel.unscoped.where(deleted_at: nil).find_by(name: "one")).to eq record
+      expect(SupportTableCache.cache.read(SupportTableCache.cache_key(DefaultScopeModel, {name: "one"}, ["name"], true))).to eq record
+    end
+
+    it "does not ignore the scope if it doesn't match" do
+      time = Time.at(Time.now.to_i)
+      record = DefaultScopeModel.create!(name: "one", deleted_at: time)
+      expect(DefaultScopeModel.unscoped.where(deleted_at: time).find_by(name: "one")).to eq record
+      expect(SupportTableCache.cache.read(SupportTableCache.cache_key(DefaultScopeModel, {name: "one"}, ["name"], true))).to eq nil
+    end
+  end
+
   describe "fetching" do
     it "fetches records by attributes" do
       expect(TestModel.fetch_by(name: "One")).to eq record_1
