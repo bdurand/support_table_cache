@@ -14,7 +14,7 @@ module SupportTableCache
       #
       # @param association_name [Symbol, String] The association name to cache.
       # @return [void]
-      # @raise ArgumentError If the association is not defined or if it has a runtime scope.
+      # @raise ArgumentError if the association is not defined or if it has a runtime scope.
       def cache_belongs_to(association_name)
         reflection = reflections[association_name.to_s]
 
