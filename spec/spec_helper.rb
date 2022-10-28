@@ -10,17 +10,28 @@ ActiveRecord::Base.establish_connection("adapter" => "sqlite3", "database" => ":
 
 require_relative "../lib/support_table_cache"
 
-class TestModel < ActiveRecord::Base
-  unless table_exists?
-    connection.create_table(table_name) do |t|
-      t.string :name, index: {unique: true}
-      t.string :code
-      t.string :group
-      t.integer :value
-      t.index [:group, :code], unique: true
-    end
+ActiveRecord::Base.connection.tap do |connection|
+  connection.create_table(:test_models) do |t|
+    t.string :name, index: {unique: true}
+    t.string :code
+    t.string :group
+    t.integer :value
+    t.index [:group, :code], unique: true
   end
 
+  connection.create_table(:parent_models) do |t|
+    t.string :name, index: {unique: true}
+    t.integer :test_model_id
+  end
+
+  connection.create_table(:default_scope_models) do |t|
+    t.string :name, index: {unique: true}
+    t.string :label
+    t.datetime :deleted_at, null: true
+  end
+end
+
+class TestModel < ActiveRecord::Base
   include SupportTableCache
 
   cache_by :name
@@ -30,13 +41,6 @@ class TestModel < ActiveRecord::Base
 end
 
 class ParentModel < ActiveRecord::Base
-  unless table_exists?
-    connection.create_table(table_name) do |t|
-      t.string :name, index: {unique: true}
-      t.integer :test_model_id
-    end
-  end
-
   include SupportTableCache::Associations
 
   belongs_to :test_model
@@ -44,14 +48,6 @@ class ParentModel < ActiveRecord::Base
 end
 
 class DefaultScopeModel < ActiveRecord::Base
-  unless table_exists?
-    connection.create_table(table_name) do |t|
-      t.string :name, index: {unique: true}
-      t.string :label
-      t.datetime :deleted_at, null: true
-    end
-  end
-
   include SupportTableCache
 
   cache_by :name, where: {deleted_at: nil}
