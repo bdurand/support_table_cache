@@ -28,6 +28,13 @@ describe SupportTableCache do
     end
   end
 
+  describe "cache_by" do
+    it "can remove existing caching by calling with false" do
+      expect(TestModel.support_table_cache_by_attributes.size).to eq 2
+      expect(Subclass.support_table_cache_by_attributes.size).to eq 0
+    end
+  end
+
   describe "finding" do
     it "uses the cache if querying by a cacheable attributes" do
       expect(TestModel.find_by(name: "One")).to eq record_1

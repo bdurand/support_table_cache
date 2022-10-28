@@ -47,6 +47,10 @@ class ParentModel < ActiveRecord::Base
   cache_belongs_to :test_model
 end
 
+class Subclass < TestModel
+  cache_by false
+end
+
 class DefaultScopeModel < ActiveRecord::Base
   include SupportTableCache
 

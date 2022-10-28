@@ -89,15 +89,24 @@ module SupportTableCache
 
     # Specify which attributes can be used for looking up records in the cache. Each value must
     # define a unique key, Multiple unique keys can be specified.
+    #
     # If multiple attributes are used to make up a unique key, then they should be passed in as an array.
     #
-    # @param attributes [String, Symbol, Array<String, Symbol>] Attributes that make up a unique key.
+    # If you need to remove caching setup in a superclass, you can pass in the value false to reset
+    # cache behavior on the class.
+    #
+    # @param attributes [String, Symbol, Array<String, Symbol>, FalseClass] Attributes that make up a unique key.
     # @param case_sensitive [Boolean] Indicate if strings should treated as case insensitive in the key.
     # @param where [Hash] A hash representing a hard coded set of attributes that must match a query in order
     #   to cache the result. If a model has a default scope, then this value should be set to match the
     #   where clause in that scope.
     # @return [void]
     def cache_by(attributes, case_sensitive: true, where: nil)
+      if attributes == false
+        self.support_table_cache_by_attributes = []
+        return
+      end
+
       attributes = Array(attributes).map(&:to_s).sort.freeze
 
       if where
