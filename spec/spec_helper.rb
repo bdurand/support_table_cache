@@ -49,6 +49,8 @@ end
 
 class Subclass < TestModel
   cache_by false
+  cache_by :code, case_sensitive: false
+  cache_by :code, case_sensitive: true
 end
 
 class DefaultScopeModel < ActiveRecord::Base

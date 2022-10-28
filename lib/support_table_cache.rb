@@ -116,7 +116,9 @@ module SupportTableCache
         where = where.stringify_keys
       end
 
-      self.support_table_cache_by_attributes = ((support_table_cache_by_attributes || []) + [[attributes, case_sensitive, where]]).uniq
+      self.support_table_cache_by_attributes ||= []
+      support_table_cache_by_attributes.delete_if { |data| data.first == attributes }
+      self.support_table_cache_by_attributes += [[attributes, case_sensitive, where]]
     end
 
     private

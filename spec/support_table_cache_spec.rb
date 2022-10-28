@@ -31,7 +31,7 @@ describe SupportTableCache do
   describe "cache_by" do
     it "can remove existing caching by calling with false" do
       expect(TestModel.support_table_cache_by_attributes.size).to eq 2
-      expect(Subclass.support_table_cache_by_attributes.size).to eq 0
+      expect(Subclass.support_table_cache_by_attributes.size).to eq 1
     end
   end
 
