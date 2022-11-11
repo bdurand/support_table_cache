@@ -45,6 +45,7 @@ module SupportTableCache
       save_val = Thread.current.thread_variable_get(varname)
       begin
         Thread.current.thread_variable_set(varname, !!disabled)
+        yield
       ensure
         Thread.current.thread_variable_set(varname, save_val)
       end
