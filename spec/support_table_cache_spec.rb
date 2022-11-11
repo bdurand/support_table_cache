@@ -224,30 +224,48 @@ describe SupportTableCache do
 
   describe "disabling" do
     it "can disable caching in a block" do
-      SupportTableCache.disable do
+      disabled = []
+      disabled_value = SupportTableCache.disable do
         expect(SupportTableCache.cache).to_not receive(:fetch)
         expect(TestModel.find_by(name: "One")).to eq record_1
-        expect(SupportTableCache.disabled?).to eq true
-        SupportTableCache.enable do
-          expect(SupportTableCache.disabled?).to eq false
+        disabled << SupportTableCache.disabled?
+
+        enabled_value = SupportTableCache.enable do
+          disabled << SupportTableCache.disabled?
+          :enabled_retval
         end
-        expect(SupportTableCache.disabled?).to eq true
+        expect(enabled_value).to eq :enabled_retval
+
+        disabled << SupportTableCache.disabled?
+        :disabled_retval
       end
+      expect(disabled_value).to eq :disabled_retval
+      expect(disabled).to eq [true, false, true]
       expect(SupportTableCache.disabled?).to eq false
     end
 
     it "can disable just for a class" do
+      blocks_executed = false
       SupportTableCache.disable do
-        TestModel.enable_caching do
-          expect(SupportTableCache.disabled?).to eq false
-          expect(SupportTableCache.cache).to receive(:fetch)
+        enabled_value = TestModel.enable_cache do
+          expect(SupportTableCache.cache).to receive(:fetch).and_call_original
           expect(TestModel.find_by(name: "One")).to eq record_1
-          TestModel.disable_caching do
+
+          disabled_value = TestModel.disable_cache do
             expect(SupportTableCache.cache).not_to receive(:fetch)
             expect(TestModel.find_by(name: "One")).to eq record_1
+            blocks_executed = true
+            :disabled_retval
           end
+          expect(disabled_value).to eq :disabled_retval
+
+          :enabled_retval
         end
+
+        expect(enabled_value).to eq :enabled_retval
       end
+
+      expect(blocks_executed).to eq true
     end
   end
 

@@ -9,10 +9,10 @@ module SupportTableCache
       return super unless klass.include?(SupportTableCache)
 
       cache = klass.send(:current_support_table_cache)
-      return super if cache.nil?
+      return super unless cache
 
       cache_key = nil
-      attributes = (args.size == 1 && args.first.is_a?(Hash) ? args.first.stringify_keys : {})
+      attributes = ((args.size == 1 && args.first.is_a?(Hash)) ? args.first.stringify_keys : {})
 
       # Apply any attributes from the current relation chain
       if scope_attributes.present?

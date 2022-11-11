@@ -54,8 +54,8 @@ module SupportTableCache
     # Enable the caching behavior for this class within the block. The enabled setting
     # for a class will always take precedence over the global setting.
     #
-    # @return [void]
-    def enable_cache
+    # @yieldreturn The return value of the block.
+    def enable_cache(&block)
       disable_cache(false, &block)
     end
 
@@ -134,7 +134,7 @@ module SupportTableCache
     end
 
     def current_support_table_cache
-      return nil? if support_table_cache_disabled?
+      return nil if support_table_cache_disabled?
       SupportTableCache.testing_cache || support_table_cache_impl || SupportTableCache.cache
     end
   end
@@ -150,6 +150,7 @@ module SupportTableCache
         save_val = Thread.current.thread_variable_get(:support_table_cache_disabled)
         begin
           Thread.current.thread_variable_set(:support_table_cache_disabled, !!disabled)
+          yield
         ensure
           Thread.current.thread_variable_set(:support_table_cache_disabled, save_val)
         end
