@@ -6,10 +6,10 @@ module SupportTableCache
     # Override for the find_by method that looks in the cache first.
     def find_by(*args)
       cache = current_support_table_cache
-      return super if cache.nil?
+      return super unless cache
 
       cache_key = nil
-      attributes = (args.size == 1 && args.first.is_a?(Hash) ? args.first.stringify_keys : {})
+      attributes = ((args.size == 1 && args.first.is_a?(Hash)) ? args.first.stringify_keys : {})
 
       if respond_to?(:scope_attributes) && scope_attributes.present?
         attributes = scope_attributes.stringify_keys.merge(attributes)
