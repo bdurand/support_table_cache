@@ -115,6 +115,11 @@ describe SupportTableCache do
       expect(SupportTableCache.cache).to_not receive(:fetch)
       expect(TestModel.where(group: "First").find_by(value: 1)).to eq record_1
     end
+
+    it "does not use the cache when only some of the columns are selected" do
+      expect(TestModel.select(:id, :name).find_by(name: "One")).to eq record_1
+      expect(SupportTableCache.cache.read(SupportTableCache.cache_key(TestModel, {name: "One"}, ["name"], true))).to eq nil
+    end
   end
 
   describe "finding with a default scope" do

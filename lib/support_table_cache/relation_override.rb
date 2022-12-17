@@ -11,6 +11,8 @@ module SupportTableCache
       cache = klass.send(:current_support_table_cache)
       return super unless cache
 
+      return super if select_values.present?
+
       cache_key = nil
       attributes = ((args.size == 1 && args.first.is_a?(Hash)) ? args.first.stringify_keys : {})
 
