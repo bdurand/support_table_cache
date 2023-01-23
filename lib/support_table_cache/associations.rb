@@ -26,13 +26,21 @@ module SupportTableCache
           raise ArgumentError.new("Cannot cache belongs_to #{association_name} association because it has a scope")
         end
 
+        define_belongs_to_with_cache(association_name.to_s)
+      end
+
+      private
+
+      def define_belongs_to_with_cache(association_name)
         class_eval <<~RUBY, __FILE__, __LINE__ + 1
           def #{association_name}_with_cache
-            foreign_key = self.send(#{reflection.foreign_key.inspect})
+            reflection = self.class.reflections[#{association_name.inspect}]
+            foreign_key = self.send(reflection.foreign_key)
             return nil if foreign_key.nil?
-            key = [#{reflection.class_name.inspect}, {#{reflection.association_primary_key.inspect} => foreign_key}]
-            cache = #{reflection.class_name}.send(:current_support_table_cache)
-            ttl = #{reflection.class_name}.send(:support_table_cache_ttl)
+
+            key = [reflection.class_name, {reflection.association_primary_key => foreign_key}]
+            cache = reflection.klass.send(:current_support_table_cache)
+            ttl = reflection.klass.send(:support_table_cache_ttl)
             if cache
               cache.fetch(key, expires_in: ttl) do
                 #{association_name}_without_cache
