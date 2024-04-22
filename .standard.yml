@@ -3,7 +3,9 @@ ruby_version: 2.5
 format: progress
 
 ignore:
-  - 'spec/**/*':
+  - "**/*":
+    - Style/RedundantParentheses
+  - "spec/**/*":
     - Lint/ConstantDefinitionInBlock
     - Lint/UselessAssignment
 
