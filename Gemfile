@@ -4,7 +4,7 @@ gemspec
 
 gem "rspec", "~> 3.0"
 gem "rake"
-gem "sqlite3", "~> 1.4"
+gem "sqlite3"
 gem "appraisal"
 gem "standard", "~>1.0"
 gem "pry-byebug"

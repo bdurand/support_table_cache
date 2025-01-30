@@ -1,8 +1,8 @@
 # Support Table Cache
 
 [![Continuous Integration](https://github.com/bdurand/support_table_cache/actions/workflows/continuous_integration.yml/badge.svg)](https://github.com/bdurand/support_table_cache/actions/workflows/continuous_integration.yml)
-[![Regression Test](https://github.com/bdurand/support_table_cache/actions/workflows/regression_test.yml/badge.svg)](https://github.com/bdurand/support_table_cache/actions/workflows/regression_test.yml)
 [![Ruby Style Guide](https://img.shields.io/badge/code_style-standard-brightgreen.svg)](https://github.com/testdouble/standard)
+[![Gem Version](https://badge.fury.io/rb/support_table_cache.svg)](https://badge.fury.io/rb/support_table_cache)
 
 This gem adds caching for ActiveRecord support table models. These models have a unique key (i.e. a unique `name` attribute, etc.) and a limited number of entries (a few hundred at most). These are often models added to normalize the data structure and are also known as lookup tables.
 

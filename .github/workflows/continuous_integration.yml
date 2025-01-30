@@ -26,6 +26,8 @@ jobs:
         include:
           - ruby: "ruby"
             standardrb: true
+          - ruby: "3.4"
+            appraisal: "activerecord_8"
           - ruby: "3.1"
             appraisal: "activerecord_7"
           - ruby: "2.7"
