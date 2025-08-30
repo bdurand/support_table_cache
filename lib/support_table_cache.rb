@@ -69,7 +69,7 @@ module SupportTableCache
 
       find_each do |record|
         support_table_cache_by_attributes.each do |attribute_names, case_sensitive|
-          attributes = record.attributes.select { |name, value| attribute_names.include?(name) }
+          attributes = record.attributes.slice(*attribute_names)
           cache_key = SupportTableCache.cache_key(self, attributes, attribute_names, case_sensitive)
           cache.fetch(cache_key, expires_in: support_table_cache_ttl) { record }
         end
