@@ -1,8 +1,8 @@
 # frozen_string_literal: true
 
-require_relative "../spec_helper"
+require "spec_helper"
 
-describe SupportTableCache::Associations do
+RSpec.describe SupportTableCache::Associations do
   let!(:record) { TestModel.create!(name: "One", code: "one", group: "First", value: 1) }
   let!(:parent) { ParentModel.create!(test_model: record) }
 

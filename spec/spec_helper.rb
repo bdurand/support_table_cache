@@ -29,6 +29,15 @@ ActiveRecord::Base.connection.tap do |connection|
     t.string :label
     t.datetime :deleted_at, null: true
   end
+
+  connection.create_table(:things) do |t|
+    t.string :name
+  end
+
+  connection.create_table(:other_things) do |t|
+    t.integer :thing_id, index: true
+    t.integer :test_model_id, index: true
+  end
 end
 
 class TestModel < ActiveRecord::Base
@@ -61,10 +70,23 @@ class DefaultScopeModel < ActiveRecord::Base
   default_scope { where(deleted_at: nil) }
 end
 
+class Thing < ActiveRecord::Base
+  has_many :other_things
+  has_many :test_models, through: :other_things
+end
+
+class OtherThing < ActiveRecord::Base
+  belongs_to :test_model
+  belongs_to :thing
+end
+
 SupportTableCache.cache = ActiveSupport::Cache::MemoryStore.new
 
 RSpec.configure do |config|
+  config.disable_monkey_patching!
+  config.default_formatter = "doc" if config.files_to_run.one?
   config.order = :random
+  Kernel.srand config.seed
 
   config.before do
     TestModel.delete_all

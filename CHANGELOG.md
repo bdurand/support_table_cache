@@ -4,6 +4,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## 1.1.4
+
+### Fixed
+
+- Fixed issue where using `find_by` on a `has_many` relation would not take the scope of the relation into account when looking up the cached record. Now chaining a `find_by` onto a `has_many` relation will correcty bypass the cache and directly query the database.
+
 ## 1.1.3
 
 ### Fixed
