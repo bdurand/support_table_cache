@@ -1,8 +1,8 @@
 # frozen_string_literal: true
 
-require_relative "../spec_helper"
+require "spec_helper"
 
-describe SupportTableCache::MemoryCache do
+RSpec.describe SupportTableCache::MemoryCache do
   let(:cache) { SupportTableCache::MemoryCache.new }
 
   # rubocop:disable Style/RedundantFetchBlock

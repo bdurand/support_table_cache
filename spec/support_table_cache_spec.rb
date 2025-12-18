@@ -1,8 +1,8 @@
 # frozen_string_literal: true
 
-require_relative "spec_helper"
+require "spec_helper"
 
-describe SupportTableCache do
+RSpec.describe SupportTableCache do
   let!(:record_1) { TestModel.create!(name: "One", code: "one", group: "First", value: 1) }
   let!(:record_2) { TestModel.create!(name: "Two", code: "two", group: "Second", value: 2) }
 
@@ -95,11 +95,23 @@ describe SupportTableCache do
 
       expect(TestModel.where(group: "First").find_by(code: "one")).to eq record_1
       expect(TestModel.where(group: "Second").find_by(code: "two")).to eq record_2
+      expect(TestModel.where(group: "Second").find_by(code: "one")).to be_nil
 
       expect(TestModel.where(group: "First").find_by(code: "one").value).to eq 1
       record_1.update_columns(value: 3)
       expect(TestModel.where(group: "First").find_by(code: "one").value).to eq 1
       expect(TestModel.where(code: "one").find_by(group: "First").value).to eq 1
+    end
+
+    it "does not use the cache when finding on an association" do
+      thing = Thing.create!(name: "Thing One")
+      OtherThing.create!(thing: thing, test_model: record_1)
+
+      TestModel.find_by(name: "One") # prime the cache
+      TestModel.find_by(name: "Two") # prime the cache
+
+      expect(thing.test_models.find_by(name: "One")).to eq record_1
+      expect(thing.test_models.find_by(name: "Two")).to be_nil
     end
 
     it "uses the cache when finding by multiple cacheable attributes with a relation chain with find_by!" do

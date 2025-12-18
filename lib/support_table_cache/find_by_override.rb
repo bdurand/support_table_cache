@@ -39,7 +39,8 @@ module SupportTableCache
     # Same as find_by, but performs a safety check to confirm the query will hit the cache.
     #
     # @param attributes [Hash] Attributes to find the record by.
-    # @raise ArgumentError if the query cannot use the cache.
+    # @return [ActiveRecord::Base, nil] The found record or nil if not found.
+    # @raise [ArgumentError] if the query cannot use the cache.
     def fetch_by(attributes)
       find_by_attribute_names = support_table_find_by_attribute_names(attributes)
       unless support_table_cache_by_attributes.any? { |attribute_names, _ci, _where| attribute_names == find_by_attribute_names }
@@ -51,8 +52,9 @@ module SupportTableCache
     # Same as find_by!, but performs a safety check to confirm the query will hit the cache.
     #
     # @param attributes [Hash] Attributes to find the record by.
-    # @raise ArgumentError if the query cannot use the cache.
-    # @raise ActiveRecord::RecordNotFound if no record is found.
+    # @return [ActiveRecord::Base] The found record.
+    # @raise [ArgumentError] if the query cannot use the cache.
+    # @raise [ActiveRecord::RecordNotFound] if no record is found.
     def fetch_by!(attributes)
       value = fetch_by(attributes)
       if value.nil?

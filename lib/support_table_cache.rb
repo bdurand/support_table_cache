@@ -39,7 +39,8 @@ module SupportTableCache
     # for a class will always take precedence over the global setting.
     #
     # @param disabled [Boolean] Caching will be disabled if this is true and enabled if false.
-    # @yieldreturn The return value of the block.
+    # @yield Executes the provided block with caching disabled or enabled.
+    # @return [Object] The return value of the block.
     def disable_cache(disabled = true, &block)
       varname = "support_table_cache_disabled:#{name}"
       save_val = Thread.current.thread_variable_get(varname)
@@ -54,7 +55,8 @@ module SupportTableCache
     # Enable the caching behavior for this class within the block. The enabled setting
     # for a class will always take precedence over the global setting.
     #
-    # @yieldreturn The return value of the block.
+    # @yield Executes the provided block with caching enabled.
+    # @return [Object] The return value of the block.
     def enable_cache(&block)
       disable_cache(false, &block)
     end
@@ -89,16 +91,16 @@ module SupportTableCache
     protected
 
     # Specify which attributes can be used for looking up records in the cache. Each value must
-    # define a unique key, Multiple unique keys can be specified.
+    # define a unique key. Multiple unique keys can be specified.
     #
     # If multiple attributes are used to make up a unique key, then they should be passed in as an array.
     #
     # If you need to remove caching setup in a superclass, you can pass in the value false to reset
     # cache behavior on the class.
     #
-    # @param attributes [String, Symbol, Array<String, Symbol>, FalseClass] Attributes that make up a unique key.
-    # @param case_sensitive [Boolean] Indicate if strings should treated as case insensitive in the key.
-    # @param where [Hash] A hash representing a hard coded set of attributes that must match a query in order
+    # @param attributes [String, Symbol, Array<String, Symbol>, false] Attributes that make up a unique key.
+    # @param case_sensitive [Boolean] Indicate if strings should be treated as case insensitive in the key.
+    # @param where [Hash, nil] A hash representing a hard coded set of attributes that must match a query in order
     #   to cache the result. If a model has a default scope, then this value should be set to match the
     #   where clause in that scope.
     # @return [void]
@@ -144,7 +146,8 @@ module SupportTableCache
     # disabled for that block. If no block is specified, then caching is disabled globally.
     #
     # @param disabled [Boolean] Caching will be disabled if this is true and enabled if false.
-    # @yieldreturn The return value of the block.
+    # @yield Executes the provided block with caching disabled or enabled (if block is given).
+    # @return [Object, nil] The return value of the block if a block is given, nil otherwise.
     def disable(disabled = true, &block)
       if block
         save_val = Thread.current.thread_variable_get(:support_table_cache_disabled)
@@ -162,7 +165,8 @@ module SupportTableCache
     # Enable the caching behavior for all classes. If a block is specified, then caching is only
     # enabled for that block. If no block is specified, then caching is enabled globally.
     #
-    # @yieldreturn The return value of the block.
+    # @yield Executes the provided block with caching enabled (if block is given).
+    # @return [Object, nil] The return value of the block if a block is given, nil otherwise.
     def enable(&block)
       disable(false, &block)
     end
@@ -204,7 +208,8 @@ module SupportTableCache
     # can use this to wrap your test methods so that cached values from one test don't show up
     # in subsequent tests.
     #
-    # @return [void]
+    # @yield Executes the provided block in test mode.
+    # @return [Object] The return value of the block.
     def testing!(&block)
       save_val = Thread.current.thread_variable_get(:support_table_cache_test_cache)
       if save_val.nil?
@@ -219,7 +224,7 @@ module SupportTableCache
 
     # Get the current test mode cache. This will only return a value inside of a `testing!` block.
     #
-    # @return [SupportTableCache::MemoryCache]
+    # @return [SupportTableCache::MemoryCache, nil] The test cache or nil if not in test mode.
     # @api private
     def testing_cache
       unless defined?(@cache) && @cache.nil?
@@ -232,9 +237,9 @@ module SupportTableCache
     #
     # @param klass [Class] The class that is being cached.
     # @param attributes [Hash] The attributes used to find a record.
-    # @param key_attribute_names [Array] List of attributes that can be used as a key in the cache.
+    # @param key_attribute_names [Array<String>] List of attributes that can be used as a key in the cache.
     # @param case_sensitive [Boolean] Indicator if string values are case-sensitive in the cache key.
-    # @return [String]
+    # @return [Array(String, Hash), nil] A two-element array with the class name and attributes hash, or nil if not cacheable.
     # @api private
     def cache_key(klass, attributes, key_attribute_names, case_sensitive)
       return nil if attributes.blank? || key_attribute_names.blank?

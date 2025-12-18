@@ -24,6 +24,7 @@ jobs:
         include:
           - ruby: "ruby"
             standardrb: true
+            yard: true
           - ruby: "3.4"
             appraisal: "activerecord_8"
           - ruby: "3.1"
@@ -60,3 +61,6 @@ jobs:
     - name: standardrb
       if:   matrix.standardrb == true
       run:  bundle exec rake standard
+    - name: yard
+      if: matrix.yard == true
+      run:  bundle exec yard --fail-on-warning

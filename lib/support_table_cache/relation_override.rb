@@ -5,11 +5,17 @@ module SupportTableCache
 
   module RelationOverride
     # Override for the find_by method that looks in the cache first.
+    #
+    # @param args [Array<Object>] Arguments passed to find_by.
+    # @return [ActiveRecord::Base, nil] The found record or nil if not found.
     def find_by(*args)
       return super unless klass.include?(SupportTableCache)
 
       cache = klass.send(:current_support_table_cache)
       return super unless cache
+
+      # Skip caching for has_many or has_many :through associations
+      return super if is_a?(ActiveRecord::Associations::CollectionProxy)
 
       return super if select_values.present?
 
@@ -43,7 +49,10 @@ module SupportTableCache
     end
 
     # Override for the find_by! method that looks in the cache first.
-    # @raise ActiveRecord::RecordNotFound if no record is found.
+    #
+    # @param args [Array<Object>] Arguments passed to find_by!.
+    # @return [ActiveRecord::Base] The found record.
+    # @raise [ActiveRecord::RecordNotFound] if no record is found.
     def find_by!(*args)
       value = find_by(*args)
       unless value
@@ -55,7 +64,8 @@ module SupportTableCache
     # Same as find_by, but performs a safety check to confirm the query will hit the cache.
     #
     # @param attributes [Hash] Attributes to find the record by.
-    # @raise ArgumentError if the query cannot use the cache.
+    # @return [ActiveRecord::Base, nil] The found record or nil if not found.
+    # @raise [ArgumentError] if the query cannot use the cache.
     def fetch_by(attributes)
       find_by_attribute_names = support_table_find_by_attribute_names(attributes)
       unless klass.support_table_cache_by_attributes.any? { |attribute_names, _ci| attribute_names == find_by_attribute_names }
@@ -67,8 +77,9 @@ module SupportTableCache
     # Same as find_by!, but performs a safety check to confirm the query will hit the cache.
     #
     # @param attributes [Hash] Attributes to find the record by.
-    # @raise ArgumentError if the query cannot use the cache.
-    # @raise ActiveRecord::RecordNotFound if no record is found.
+    # @return [ActiveRecord::Base] The found record.
+    # @raise [ArgumentError] if the query cannot use the cache.
+    # @raise [ActiveRecord::RecordNotFound] if no record is found.
     def fetch_by!(attributes)
       value = fetch_by(attributes)
       if value.nil?
