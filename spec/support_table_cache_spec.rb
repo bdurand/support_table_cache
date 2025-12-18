@@ -103,7 +103,7 @@ RSpec.describe SupportTableCache do
       expect(TestModel.where(code: "one").find_by(group: "First").value).to eq 1
     end
 
-    it "uses the cache when finding on an association" do
+    it "does not use the cache when finding on an association" do
       thing = Thing.create!(name: "Thing One")
       OtherThing.create!(thing: thing, test_model: record_1)
 
