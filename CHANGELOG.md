@@ -8,7 +8,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
-- Fixed issue where using `find_by` on a `has_many` relation would not take the scope of the relation into account when looking up the cached record. Now chaining a `find_by` onto a `has_many` relation will correcty bypass the cache and directly query the database.
+- Fixed issue where using `find_by` on a `has_many` relation would not take the scope of the relation into account when looking up the cached record. Now chaining a `find_by` onto a `has_many` relation will correctly bypass the cache and directly query the database.
 
 ## 1.1.3
 
