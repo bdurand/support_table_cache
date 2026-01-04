@@ -4,11 +4,11 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## 1.2.0
+## 1.1.5
 
-### Changed
+### Fixed
 
-- Replaced thread local variables with fiber local variables to prevent behavior from leaking across fibers.
+- Replaced thread local variables with fiber local variables to prevent the possibility of behavior from leaking across fibers when disabling the cache in a block.
 
 ## 1.1.4
 
