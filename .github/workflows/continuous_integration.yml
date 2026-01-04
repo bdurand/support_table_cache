@@ -63,4 +63,4 @@ jobs:
       run:  bundle exec rake standard
     - name: yard
       if: matrix.yard == true
-      run:  bundle exec yard --fail-on-warning
+      run:  bundle exec yard doc --fail-on-warning

@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require_relative "support_table_cache/associations"
+require_relative "support_table_cache/fiber_locals"
 require_relative "support_table_cache/find_by_override"
 require_relative "support_table_cache/relation_override"
 require_relative "support_table_cache/memory_cache"
@@ -9,6 +10,13 @@ require_relative "support_table_cache/memory_cache"
 # using Rails.cache when calling find_by rather than hitting the database every time.
 module SupportTableCache
   extend ActiveSupport::Concern
+
+  NOT_SET = Object.new.freeze
+  private_constant :NOT_SET
+
+  @fiber_locals = FiberLocals.new
+  @cache = NOT_SET
+  @disabled = false
 
   included do
     # @api private Used to store the list of attribute names used for caching.
@@ -42,14 +50,7 @@ module SupportTableCache
     # @yield Executes the provided block with caching disabled or enabled.
     # @return [Object] The return value of the block.
     def disable_cache(disabled = true, &block)
-      varname = "support_table_cache_disabled:#{name}"
-      save_val = Thread.current.thread_variable_get(varname)
-      begin
-        Thread.current.thread_variable_set(varname, !!disabled)
-        yield
-      ensure
-        Thread.current.thread_variable_set(varname, save_val)
-      end
+      SupportTableCache.with_fiber_local("support_table_cache_disabled:#{name}", !!disabled, &block)
     end
 
     # Enable the caching behavior for this class within the block. The enabled setting
@@ -127,7 +128,7 @@ module SupportTableCache
     private
 
     def support_table_cache_disabled?
-      current_block_value = Thread.current.thread_variable_get("support_table_cache_disabled:#{name}")
+      current_block_value = SupportTableCache.fiber_local_value("support_table_cache_disabled:#{name}")
       if current_block_value.nil?
         SupportTableCache.disabled?
       else
@@ -150,13 +151,7 @@ module SupportTableCache
     # @return [Object, nil] The return value of the block if a block is given, nil otherwise.
     def disable(disabled = true, &block)
       if block
-        save_val = Thread.current.thread_variable_get(:support_table_cache_disabled)
-        begin
-          Thread.current.thread_variable_set(:support_table_cache_disabled, !!disabled)
-          yield
-        ensure
-          Thread.current.thread_variable_set(:support_table_cache_disabled, save_val)
-        end
+        SupportTableCache.with_fiber_local("support_table_cache_disabled", !!disabled, &block)
       else
         @disabled = !!disabled
       end
@@ -174,9 +169,9 @@ module SupportTableCache
     # Return true if caching has been disabled.
     # @return [Boolean]
     def disabled?
-      block_value = Thread.current.thread_variable_get(:support_table_cache_disabled)
+      block_value = SupportTableCache.fiber_local_value("support_table_cache_disabled")
       if block_value.nil?
-        !!(defined?(@disabled) && @disabled)
+        !!@disabled
       else
         block_value
       end
@@ -197,7 +192,7 @@ module SupportTableCache
     def cache
       if testing_cache
         testing_cache
-      elsif defined?(@cache)
+      elsif @cache != NOT_SET
         @cache
       elsif defined?(Rails.cache)
         Rails.cache
@@ -211,14 +206,11 @@ module SupportTableCache
     # @yield Executes the provided block in test mode.
     # @return [Object] The return value of the block.
     def testing!(&block)
-      save_val = Thread.current.thread_variable_get(:support_table_cache_test_cache)
+      save_val = SupportTableCache.fiber_local_value("support_table_cache_test_cache")
       if save_val.nil?
-        Thread.current.thread_variable_set(:support_table_cache_test_cache, MemoryCache.new)
-      end
-      begin
+        SupportTableCache.with_fiber_local("support_table_cache_test_cache", MemoryCache.new, &block)
+      else
         yield
-      ensure
-        Thread.current.thread_variable_set(:support_table_cache_test_cache, save_val)
       end
     end
 
@@ -227,9 +219,9 @@ module SupportTableCache
     # @return [SupportTableCache::MemoryCache, nil] The test cache or nil if not in test mode.
     # @api private
     def testing_cache
-      unless defined?(@cache) && @cache.nil?
-        Thread.current.thread_variable_get(:support_table_cache_test_cache)
-      end
+      return nil if @cache.nil?
+
+      SupportTableCache.fiber_local_value("support_table_cache_test_cache")
     end
 
     # Generate a consistent cache key for a set of attributes. It will return nil if the attributes
@@ -257,6 +249,14 @@ module SupportTableCache
       end
 
       [klass.name, sorted_attributes]
+    end
+
+    def fiber_local_value(varname)
+      @fiber_locals[varname]
+    end
+
+    def with_fiber_local(varname, value, &block)
+      @fiber_locals.with(varname, value, &block)
     end
   end
 
