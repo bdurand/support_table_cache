@@ -10,7 +10,13 @@ module SupportTableCache
     end
 
     def [](key)
-      @locals[Fiber.current.object_id]&.fetch(key, nil)
+      fiber_locals = nil
+      @mutex.synchronize do
+        fiber_locals = @locals[Fiber.current.object_id]
+      end
+      return nil if fiber_locals.nil?
+
+      fiber_locals[key]
     end
 
     def with(key, value)
