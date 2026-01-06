@@ -127,6 +127,9 @@ end
 
 You can include `SupportTableCache::Associations` in your `ApplicationRecord` class to make association caching available on all models.
 
+> [!NOTE]
+> You still need to set up the target model to cache by the primary key used by the belongs to association. Otherwise the association will not be cached.
+
 ### Testing
 
 Caching may interfere with tests by allowing data created in one test to leak into subsequent tests. You can resolve this by wrapping your tests with the `SupportTableCache.testing!` method.
