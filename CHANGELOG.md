@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 
 - Replaced thread local variables with fiber local variables to prevent the possibility of behavior from leaking across fibers when disabling the cache in a block.
+- Allow setting the cache to an in-memory cache by setting `true` to `support_table_cache` to `true`.
 
 ## 1.1.4
 
