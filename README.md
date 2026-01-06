@@ -19,6 +19,18 @@ end
 
 With this gem, you can avoid the database query associated with the `find_by` call. You don't need to alter your code in any way other than to include `SupportTableCache` in your model and telling it the attributes that comprise a unique key, which can be used for caching.
 
+## Table of Contents
+
+- [Usage](#usage)
+  - [Setting the Cache](#setting-the-cache)
+  - [Disabling Caching](#disabling-caching)
+  - [Caching Belongs to Associations](#caching-belongs-to-associations)
+  - [Testing](#testing)
+  - [Companion Gems](#companion-gems)
+- [Installation](#installation)
+- [Contributing](#contributing)
+- [License](#license)
+
 ## Usage
 
 To use the gem, you need to include it in you models and then specify which attributes can be used for caching with the `cache_by` method. A caching attribute must be a unique key on the model. For a composite unique key, you can specify an array of attributes. If any of the attributes are case-insensitive strings, you need to specify that as well.
@@ -136,9 +148,12 @@ class MiniTest::Spec
 
 ```
 
-### Maintaining Data
+### Companion Gems
 
 You can use the companion [support_table_data gem](https://github.com/bdurand/support_table_data) to provide functionality for loading static data into your support tables as well as adding helper functions to make looking up specific rows much easier.
+
+> [!TIP]
+> The [support_table](https://github.com/bdurand/support_table) gem combines both gems in a drop in solution for Rails applications.
 
 ## Installation
 

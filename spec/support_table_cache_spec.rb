@@ -330,6 +330,13 @@ RSpec.describe SupportTableCache do
     ensure
       TestModel.support_table_cache = nil
     end
+
+    it "can set the cache to an in memory cache using true" do
+      TestModel.support_table_cache = true
+      expect(TestModel.send(:support_table_cache_impl)).to be_a(SupportTableCache::MemoryCache)
+    ensure
+      TestModel.support_table_cache = nil
+    end
   end
 
   describe "loading the cache" do
