@@ -152,7 +152,7 @@ class MiniTest::Spec
 
 You can use the companion [support_table_data gem](https://github.com/bdurand/support_table_data) to provide functionality for loading static data into your support tables as well as adding helper functions to make looking up specific rows much easier.
 
-> ![TIP]
+> [!TIP]
 > The [support_table](https://github.com/bdurand/support_table) gem combines both gems in a drop in solution for Rails applications.
 
 ## Installation
