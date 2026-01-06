@@ -82,10 +82,10 @@ module SupportTableCache
     # Set a class-specific cache to use in lieu of the global cache.
     #
     # @param cache [ActiveSupport::Cache::Store, Symbol] The cache instance to use. You can also
-    #   specify the value :memory to use an optimized in-memory cache.
+    #   specify the value :memory or true to use an optimized in-memory cache.
     # @return [void]
     def support_table_cache=(cache)
-      cache = MemoryCache.new if cache == :memory
+      cache = MemoryCache.new if cache == :memory || cache == true
       self.support_table_cache_impl = cache
     end
 
