@@ -147,8 +147,7 @@ class MiniTest::Spec
   around do |tests|
     SupportTableCache.testing!(&tests)
   end
-=end
-
+end
 ```
 
 ### Companion Gems
