@@ -180,7 +180,7 @@ RSpec.describe SupportTableCache::FiberLocals do
     end
 
     it "does not leak memory across fibers" do
-      initial_locals_count = fiber_locals.instance_variable_get(:@locals).size
+      locals_key = fiber_locals.instance_variable_get(:@locals_key)
 
       100.times do
         Fiber.new do
@@ -190,9 +190,24 @@ RSpec.describe SupportTableCache::FiberLocals do
         end.resume
       end
 
-      # Locals should be cleaned up for completed fibers
-      final_locals_count = fiber_locals.instance_variable_get(:@locals).size
-      expect(final_locals_count).to be <= initial_locals_count + 1
+      # State is stored on each fiber, so nothing is retained by the FiberLocals instance
+      # and the current fiber's storage is cleaned up when the block exits.
+      expect(Thread.current[locals_key]).to be_nil
+    end
+
+    it "does not retain state for a fiber that dies inside a with block" do
+      locals_key = fiber_locals.instance_variable_get(:@locals_key)
+
+      fiber = Fiber.new do
+        fiber_locals.with(:key, :value) do
+          Fiber.yield
+        end
+      end
+      fiber.resume
+      # The fiber is suspended inside the block and never resumed; its state lives only
+      # on the fiber itself, so other fibers are unaffected.
+      expect(fiber_locals[:key]).to be_nil
+      expect(Thread.current[locals_key]).to be_nil
     end
   end
 

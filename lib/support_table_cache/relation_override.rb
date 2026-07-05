@@ -19,27 +19,23 @@ module SupportTableCache
 
       return super if select_values.present?
 
-      cache_key = nil
-      attributes = ((args.size == 1 && args.first.is_a?(Hash)) ? args.first.stringify_keys : {})
+      # Only queries by simple attribute equality can be matched against cache keys.
+      simple_attribute_query = args.empty? || (args.size == 1 && args.first.is_a?(Hash))
+      return super unless simple_attribute_query
 
-      # Apply any attributes from the current relation chain
-      if scope_attributes.present?
-        attributes = scope_attributes.stringify_keys.merge(attributes)
-      end
+      return super unless support_table_cacheable_scope?
 
-      if attributes.present?
-        support_table_cache_by_attributes.each do |attribute_names, case_sensitive, where|
-          where&.each do |name, value|
-            if attributes.include?(name) && attributes[name] == value
-              attributes.delete(name)
-            else
-              return super
-            end
-          end
-          cache_key = SupportTableCache.cache_key(klass, attributes, attribute_names, case_sensitive)
-          break if cache_key
-        end
-      end
+      # Queries inside a transaction could see uncommitted data that would be invalid
+      # if the transaction is rolled back, so they cannot be cached.
+      return super if SupportTableCache.open_transaction?(klass)
+
+      attributes = (args.first || {}).stringify_keys
+
+      # Apply any conditions from the current relation chain
+      scope_conditions = where_values_hash.stringify_keys
+      attributes = scope_conditions.merge(attributes) if scope_conditions.present?
+
+      cache_key = SupportTableCache.cache_key_for_query(klass, attributes)
 
       if cache_key
         cache.fetch(cache_key, expires_in: support_table_cache_ttl) { super }
@@ -89,6 +85,20 @@ module SupportTableCache
     end
 
     private
+
+    # A relation can only be cached if all of its conditions are simple equality conditions
+    # on the model's own attributes that can be represented in a cache key. Anything else
+    # (SQL string conditions, ranges, OR clauses, joins, etc.) is not visible in
+    # where_values_hash and could silently change which record the query returns.
+    def support_table_cacheable_scope?
+      return false unless where_clause.send(:predicates).size == where_values_hash.size
+      return false if joins_values.present? || left_outer_joins_values.present?
+      return false if group_values.present? || !having_clause.empty?
+      return false if !from_clause.empty? || offset_value.present? || lock_value
+      return false if eager_loading?
+
+      true
+    end
 
     def support_table_find_by_attribute_names(attributes)
       attributes ||= {}

@@ -23,13 +23,21 @@ module SupportTableCache
     # @yield Block to execute to get a new value if the key is not cached.
     # @return [Object, nil] The cached value or the result of the block, or nil if no value is found.
     def fetch(key, expires_in: nil)
-      serialized_value, expire_at = @cache[key]
-      if serialized_value.nil? || (expire_at && expire_at < Process.clock_gettime(Process::CLOCK_MONOTONIC))
+      serialized_value = nil
+      @mutex.synchronize do
+        serialized_value, expire_at = @cache[key]
+        if expire_at && expire_at < Process.clock_gettime(Process::CLOCK_MONOTONIC)
+          @cache.delete(key)
+          serialized_value = nil
+        end
+      end
+
+      if serialized_value.nil?
         value = yield if block_given?
         return nil if value.nil?
-        write(key, value, expires_in: expires_in)
-        serialized_value = Marshal.dump(value)
+        serialized_value = write(key, value, expires_in: expires_in)
       end
+
       Marshal.load(serialized_value)
     end
 
@@ -59,6 +67,8 @@ module SupportTableCache
       @mutex.synchronize do
         @cache[key] = [serialized_value, expire_at]
       end
+
+      serialized_value
     end
 
     # Delete a value from the cache.
@@ -66,14 +76,20 @@ module SupportTableCache
     # @param key [Object] The cache key.
     # @return [void]
     def delete(key)
-      @cache.delete(key)
+      @mutex.synchronize do
+        @cache.delete(key)
+      end
+      nil
     end
 
     # Clear all values from the cache.
     #
     # @return [void]
     def clear
-      @cache.clear
+      @mutex.synchronize do
+        @cache.clear
+      end
+      nil
     end
   end
 end

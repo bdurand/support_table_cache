@@ -14,6 +14,11 @@ RSpec.describe SupportTableCache::Associations do
     expect(parent.test_model).to eq record
   end
 
+  it "does not break the association when cache_belongs_to is called more than once" do
+    ParentModel.cache_belongs_to :test_model
+    expect(parent.test_model).to eq record
+  end
+
   it "does not cache if the cache is set to nil" do
     cache = SupportTableCache.cache
     begin

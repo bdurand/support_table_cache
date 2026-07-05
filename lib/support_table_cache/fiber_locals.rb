@@ -1,51 +1,40 @@
 # frozen_string_literal: true
 
 module SupportTableCache
-  # Utility class for managing fiber-local variables. This implementation
-  # does not pollute the global namespace.
+  # Utility class for managing fiber-local variables. All values are stored in a single
+  # hash inside the fiber's native local storage (Thread.current[], which is fiber-local
+  # in Ruby) so the fiber-local namespace is not polluted with individual keys. Because
+  # the state lives on the fiber itself, it is garbage collected along with the fiber
+  # and cannot leak or be picked up by another fiber.
   class FiberLocals
     def initialize
-      @mutex = Mutex.new
-      @locals = {}
+      @locals_key = :"support_table_cache_locals_#{object_id}"
     end
 
     def [](key)
-      fiber_locals = nil
-      @mutex.synchronize do
-        fiber_locals = @locals[Fiber.current.object_id]
-      end
-      return nil if fiber_locals.nil?
-
-      fiber_locals[key]
+      locals = Thread.current[@locals_key]
+      locals[key] if locals
     end
 
     def with(key, value)
-      fiber_id = Fiber.current.object_id
-      fiber_locals = nil
-      previous_value = nil
-      inited_vars = false
+      locals = Thread.current[@locals_key]
+      if locals.nil?
+        locals = {}
+        Thread.current[@locals_key] = locals
+      end
+
+      exists = locals.key?(key)
+      previous_value = locals[key]
+      locals[key] = value
 
       begin
-        @mutex.synchronize do
-          fiber_locals = @locals[fiber_id]
-          if fiber_locals.nil?
-            fiber_locals = {}
-            @locals[fiber_id] = fiber_locals
-            inited_vars = true
-          end
-        end
-
-        previous_value = fiber_locals[key]
-        fiber_locals[key] = value
-
         yield
       ensure
-        if inited_vars
-          @mutex.synchronize do
-            @locals.delete(fiber_id)
-          end
+        if exists
+          locals[key] = previous_value
         else
-          fiber_locals[key] = previous_value
+          locals.delete(key)
+          Thread.current[@locals_key] = nil if locals.empty?
         end
       end
     end

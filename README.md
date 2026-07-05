@@ -89,6 +89,12 @@ You can also set a cache per class. For instance, you can set an in-memory cache
 
 Note that in-memory caches exist separately within each process and will not be cleared when records are changed in the database. The only way to refresh elements in an in-memory cache is to restart the process or set the `support_table_cache_ttl` value so that the entries will expire.
 
+It is a good idea to always set `support_table_cache_ttl`, even when using a shared cache store. Cache invalidation happens when a record's changes are committed, but a process reading the old row at the same moment can still write the stale value back to the cache just after it was invalidated. A TTL puts an upper bound on how long such a stale entry can survive.
+
+The global cache and disabled settings (`SupportTableCache.cache=` and `SupportTableCache.disable` without a block) are intended to be set during application initialization and are not synchronized for concurrent modification at runtime.
+
+Queries made inside an open database transaction always bypass the cache. This prevents uncommitted data from being cached (which would never be cleared if the transaction were rolled back). Transactions created with `joinable: false`, such as the ones wrapping Rails transactional test fixtures, do not bypass the cache.
+
 ### Disabling Caching
 
 You can disable the cache within a block either globally or only for a specific class. If the cache is disabled, then all queries will pass through to the database.
@@ -107,6 +113,10 @@ SupportTableCache.enable do
   end
 end
 ```
+
+Cache entries are still cleared when records are changed while caching is disabled, so re-enabling the cache will not expose stale data.
+
+Note that the class-level `disable_cache` and `enable_cache` settings apply only to the class they are called on; they do not apply to subclasses in a single table inheritance hierarchy.
 
 ### Caching Belongs to Associations
 

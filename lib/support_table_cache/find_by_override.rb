@@ -8,26 +8,18 @@ module SupportTableCache
       cache = current_support_table_cache
       return super unless cache
 
-      cache_key = nil
-      attributes = ((args.size == 1 && args.first.is_a?(Hash)) ? args.first.stringify_keys : {})
+      # Only queries by simple attribute equality can be matched against cache keys.
+      return super unless args.size == 1 && args.first.is_a?(Hash)
 
-      if respond_to?(:scope_attributes) && scope_attributes.present?
-        attributes = scope_attributes.stringify_keys.merge(attributes)
-      end
+      # If the class has any scope applied (a default scope or a scoping block), defer to
+      # the relation override, which checks whether the scoped query can be cached.
+      return super if all.values.present?
 
-      if attributes.present?
-        support_table_cache_by_attributes.each do |attribute_names, case_sensitive, where|
-          where&.each do |name, value|
-            if attributes.include?(name) && attributes[name] == value
-              attributes.delete(name)
-            else
-              return super
-            end
-          end
-          cache_key = SupportTableCache.cache_key(self, attributes, attribute_names, case_sensitive)
-          break if cache_key
-        end
-      end
+      # Queries inside a transaction could see uncommitted data that would be invalid
+      # if the transaction is rolled back, so they cannot be cached.
+      return super if SupportTableCache.open_transaction?(self)
+
+      cache_key = SupportTableCache.cache_key_for_query(self, args.first.stringify_keys)
 
       if cache_key
         cache.fetch(cache_key, expires_in: support_table_cache_ttl) { super }

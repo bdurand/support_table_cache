@@ -50,7 +50,9 @@ module SupportTableCache
             end
           end
 
-          alias_method :#{association_name}_without_cache, :#{association_name}
+          unless method_defined?(:#{association_name}_without_cache) || private_method_defined?(:#{association_name}_without_cache)
+            alias_method :#{association_name}_without_cache, :#{association_name}
+          end
           alias_method :#{association_name}, :#{association_name}_with_cache
         RUBY
       end
