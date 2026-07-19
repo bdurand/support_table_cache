@@ -79,6 +79,15 @@ class WhereConditionModel < ActiveRecord::Base
   cache_by :label
 end
 
+class TypedWhereModel < ActiveRecord::Base
+  include SupportTableCache
+
+  self.table_name = "test_models"
+
+  cache_by :name, where: {value: 1}
+  cache_by :code, where: {value: "1"}
+end
+
 class NoCacheByModel < ActiveRecord::Base
   include SupportTableCache
 

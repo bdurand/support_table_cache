@@ -91,6 +91,12 @@ module SupportTableCache
     # (SQL string conditions, ranges, OR clauses, joins, etc.) is not visible in
     # where_values_hash and could silently change which record the query returns.
     def support_table_cacheable_scope?
+      # WhereClause#predicates is not part of the public Rails API (its visibility has varied
+      # across Rails versions), but there is no public way to detect conditions that cannot
+      # be represented in where_values_hash. If the method is ever removed in a future Rails
+      # version, fail safe by bypassing the cache rather than raising. There is a spec
+      # asserting the method exists so an incompatible Rails upgrade fails explicitly.
+      return false unless where_clause.respond_to?(:predicates, true)
       return false unless where_clause.send(:predicates).size == where_values_hash.size
       return false if joins_values.present? || left_outer_joins_values.present?
       return false if group_values.present? || !having_clause.empty?

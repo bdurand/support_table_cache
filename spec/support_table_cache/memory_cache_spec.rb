@@ -50,5 +50,23 @@ RSpec.describe SupportTableCache::MemoryCache do
     expect(value).to eq :baz
   end
 
+  it "does not store a value if the key is deleted while the value is being generated" do
+    value = cache.fetch("foo") do
+      cache.delete("foo")
+      :bar
+    end
+    expect(value).to eq :bar
+    expect(cache.read("foo")).to eq nil
+  end
+
+  it "does not store a value if the cache is cleared while the value is being generated" do
+    value = cache.fetch("foo") do
+      cache.clear
+      :bar
+    end
+    expect(value).to eq :bar
+    expect(cache.read("foo")).to eq nil
+  end
+
   # rubocop:enable Style/RedundantFetchBlock
 end

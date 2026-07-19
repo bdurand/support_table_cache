@@ -14,6 +14,9 @@ module SupportTableCache
     def initialize
       @cache = {}
       @mutex = Mutex.new
+      # Incremented on every delete or clear so that a fetch that was generating a value
+      # while the cache was invalidated will not store a stale value.
+      @generation = 0
     end
 
     # Fetch a value from the cache. If the key is not found or has expired, yields to get a new value.
@@ -24,7 +27,9 @@ module SupportTableCache
     # @return [Object, nil] The cached value or the result of the block, or nil if no value is found.
     def fetch(key, expires_in: nil)
       serialized_value = nil
+      generation = nil
       @mutex.synchronize do
+        generation = @generation
         serialized_value, expire_at = @cache[key]
         if expire_at && expire_at < Process.clock_gettime(Process::CLOCK_MONOTONIC)
           @cache.delete(key)
@@ -35,7 +40,16 @@ module SupportTableCache
       if serialized_value.nil?
         value = yield if block_given?
         return nil if value.nil?
-        serialized_value = write(key, value, expires_in: expires_in)
+
+        serialized_value = Marshal.dump(value)
+        expire_at = Process.clock_gettime(Process::CLOCK_MONOTONIC) + expires_in if expires_in
+
+        @mutex.synchronize do
+          # Only store the value if the cache was not invalidated while the value was being
+          # generated. Otherwise a record deleted by a concurrent invalidation could be
+          # resurrected in the cache with stale data.
+          @cache[key] = [serialized_value, expire_at] if @generation == generation
+        end
       end
 
       Marshal.load(serialized_value)
@@ -68,7 +82,7 @@ module SupportTableCache
         @cache[key] = [serialized_value, expire_at]
       end
 
-      serialized_value
+      nil
     end
 
     # Delete a value from the cache.
@@ -77,6 +91,7 @@ module SupportTableCache
     # @return [void]
     def delete(key)
       @mutex.synchronize do
+        @generation += 1
         @cache.delete(key)
       end
       nil
@@ -87,6 +102,7 @@ module SupportTableCache
     # @return [void]
     def clear
       @mutex.synchronize do
+        @generation += 1
         @cache.clear
       end
       nil

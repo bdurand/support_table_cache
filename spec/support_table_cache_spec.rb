@@ -224,6 +224,12 @@ RSpec.describe SupportTableCache do
       expect(WhereConditionModel.find_by(label: "l1")).to eq record
       expect(SupportTableCache.cache.read(SupportTableCache.cache_key(WhereConditionModel, {label: "l1"}, ["label"], true))).to eq record
     end
+
+    it "casts values through the attribute type when matching the where clause" do
+      record = TypedWhereModel.create!(name: "typed-one", value: 1)
+      expect(TypedWhereModel.find_by(name: "typed-one", value: "1")).to eq record
+      expect(SupportTableCache.cache.read(SupportTableCache.cache_key(TypedWhereModel, {name: "typed-one"}, ["name"], true))).to eq record
+    end
   end
 
   describe "finding with a default scope" do
@@ -478,6 +484,19 @@ RSpec.describe SupportTableCache do
         WhereConditionModel.support_table_cache = nil
       end
     end
+
+    it "casts where condition values through the attribute type when matching records" do
+      record = TypedWhereModel.create!(name: "typed-one", code: "typed-code", value: 1)
+      cache = ActiveSupport::Cache::MemoryStore.new
+      TypedWhereModel.support_table_cache = cache
+      begin
+        TypedWhereModel.load_cache
+        expect(cache.read(SupportTableCache.cache_key(TypedWhereModel, {name: "typed-one"}, ["name"], true))).to eq record
+        expect(cache.read(SupportTableCache.cache_key(TypedWhereModel, {code: "typed-code"}, ["code"], true))).to eq record
+      ensure
+        TypedWhereModel.support_table_cache = nil
+      end
+    end
   end
 
   describe "testing!" do
@@ -495,6 +514,29 @@ RSpec.describe SupportTableCache do
       end
 
       expect(SupportTableCache.cache).to eq normal_cache
+    end
+  end
+
+  # These specs pin the internal Rails APIs that the gem depends on. The code fails safe by
+  # bypassing the cache if these APIs disappear, so these specs exist to make an incompatible
+  # Rails upgrade fail explicitly instead of silently degrading performance.
+  describe "internal Rails API dependencies" do
+    it "can count the predicates on a relation's where clause" do
+      where_clause = TestModel.where(name: "One", value: 1..10).send(:where_clause)
+      expect(where_clause.respond_to?(:predicates, true)).to be true
+      expect(where_clause.send(:predicates).size).to eq 2
+    end
+
+    it "can detect whether the current transaction is joinable" do
+      TestModel.connection.transaction(joinable: false) do
+        transaction = TestModel.connection.current_transaction
+        expect(transaction).to respond_to(:joinable?)
+        expect(transaction.joinable?).to be false
+      end
+
+      TestModel.transaction do
+        expect(TestModel.connection.current_transaction.joinable?).to be true
+      end
     end
   end
 end

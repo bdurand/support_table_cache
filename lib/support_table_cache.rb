@@ -74,7 +74,7 @@ module SupportTableCache
 
       find_each do |record|
         support_table_cache_by_attributes.each do |attribute_names, case_sensitive, where|
-          next unless where.nil? || where.all? { |name, value| record[name] == value }
+          next unless where.nil? || where.all? { |name, value| record[name] == type_for_attribute(name).cast(value) }
 
           attributes = record.attributes.slice(*attribute_names)
           cache_key = SupportTableCache.cache_key(self, attributes, attribute_names, case_sensitive)
@@ -279,7 +279,12 @@ module SupportTableCache
       return nil if attributes.blank?
 
       Array(klass.support_table_cache_by_attributes).each do |attribute_names, case_sensitive, where|
-        where_matched = where.nil? || where.all? { |name, value| attributes.include?(name) && attributes[name] == value }
+        # Cast both sides through the attribute type so that equivalent values (e.g. 1 and "1")
+        # match the where clause the same way they are matched when building cache keys.
+        where_matched = where.nil? || where.all? do |name, value|
+          type = klass.type_for_attribute(name)
+          attributes.include?(name) && type.cast(attributes[name]) == type.cast(value)
+        end
         next unless where_matched
 
         key_attributes = (where ? attributes.except(*where.keys) : attributes)
@@ -302,7 +307,14 @@ module SupportTableCache
       return false unless klass.connection_pool.active_connection?
 
       connection = klass.connection
-      connection.transaction_open? && connection.current_transaction.joinable?
+      return false unless connection.transaction_open?
+
+      # current_transaction and joinable? are internal Rails APIs. If a future Rails version
+      # changes them, fail safe by treating the transaction as open (bypassing the cache)
+      # rather than raising. There is a spec asserting the API exists so an incompatible
+      # Rails upgrade fails explicitly.
+      transaction = connection.current_transaction
+      !transaction.respond_to?(:joinable?) || transaction.joinable?
     end
 
     def fiber_local_value(varname)

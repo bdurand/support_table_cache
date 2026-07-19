@@ -18,7 +18,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Calling `cache_by` in a subclass no longer mutates the superclass's cache configuration.
 - Models that include `SupportTableCache` without calling `cache_by` no longer raise an error on `find_by`.
 - Calling `cache_belongs_to` more than once for the same association no longer causes infinite recursion when reading the association.
-- `SupportTableCache::MemoryCache` now synchronizes all access to the underlying hash (previously reads, deletes, and clears were unsynchronized), purges expired entries, and no longer serializes values twice on a cache miss.
+- `SupportTableCache::MemoryCache` now synchronizes all access to the underlying hash (previously reads, deletes, and clears were unsynchronized), purges expired entries, and no longer serializes values twice on a cache miss. A `fetch` that races with a concurrent `delete` or `clear` no longer stores its stale value back in the cache.
+- The `where` clause on a `cache_by` configuration is now matched against query attributes using values cast through the attribute type, so equivalent values (e.g. `1` and `"1"`) match the same way they do when building cache keys.
 - `SupportTableCache::FiberLocals` now stores state in the fiber's native local storage so that state cannot leak from fibers that are garbage collected while suspended inside a block.
 
 ## 1.1.5
