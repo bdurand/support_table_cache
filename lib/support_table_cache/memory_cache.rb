@@ -30,10 +30,11 @@ module SupportTableCache
       generation = nil
       @mutex.synchronize do
         generation = @generation
-        serialized_value, expire_at = @cache[key]
-        if expire_at && expire_at < Process.clock_gettime(Process::CLOCK_MONOTONIC)
+        cached_value, cached_expire_at = @cache[key]
+        if cached_expire_at && cached_expire_at < Process.clock_gettime(Process::CLOCK_MONOTONIC)
           @cache.delete(key)
-          serialized_value = nil
+        else
+          serialized_value = cached_value
         end
       end
 
@@ -42,7 +43,9 @@ module SupportTableCache
         return nil if value.nil?
 
         serialized_value = Marshal.dump(value)
-        expire_at = Process.clock_gettime(Process::CLOCK_MONOTONIC) + expires_in if expires_in
+        # The expiration is always recalculated from the expires_in argument so that replacing
+        # an expired entry without an expiration does not carry over the old expiration time.
+        expire_at = (Process.clock_gettime(Process::CLOCK_MONOTONIC) + expires_in if expires_in)
 
         @mutex.synchronize do
           # Only store the value if the cache was not invalidated while the value was being

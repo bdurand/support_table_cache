@@ -188,6 +188,22 @@ RSpec.describe SupportTableCache do
       expect(TestModel.create_with(value: 100).where(group: "First").find_by(code: "one")).to eq record_1
       expect(SupportTableCache.cache.read(SupportTableCache.cache_key(TestModel, {code: "one", group: "First"}, ["code", "group"], false))).to eq record_1
     end
+
+    it "does not use the cache when the relation and find_by arguments conflict on an attribute" do
+      expect(TestModel.find_by(name: "One")).to eq record_1 # prime the cache
+      expect(TestModel.where(name: "Two").find_by(name: "One")).to be_nil
+      expect(TestModel.where(group: "Second").find_by(group: "First", code: "one")).to be_nil
+    end
+
+    it "does not use the cache when the relation and find_by arguments differ only by case" do
+      expect(TestModel.where(group: "First").find_by(code: "one")).to eq record_1 # prime the cache
+      expect(TestModel.where(group: "FIRST").find_by(group: "First", code: "one")).to be_nil
+    end
+
+    it "uses the cache when the relation and find_by arguments agree on an attribute" do
+      expect(TestModel.where(group: "First").find_by(group: "First", code: "one")).to eq record_1
+      expect(SupportTableCache.cache.read(SupportTableCache.cache_key(TestModel, {code: "one", group: "First"}, ["code", "group"], false))).to eq record_1
+    end
   end
 
   describe "finding inside a transaction" do
@@ -275,6 +291,27 @@ RSpec.describe SupportTableCache do
 
     it "raises an ArgumentError if scoped fetched query is not cacheable" do
       expect { TestModel.where(value: nil).fetch_by(code: "one") }.to raise_error(ArgumentError)
+    end
+
+    it "raises an ArgumentError if the query does not match the where condition on the cache configuration" do
+      expect { TypedWhereModel.fetch_by(name: "typed-one") }.to raise_error(ArgumentError)
+      expect { TypedWhereModel.where(value: 2).fetch_by(name: "typed-one") }.to raise_error(ArgumentError)
+    end
+
+    it "fetches records that match the where condition on the cache configuration" do
+      record = TypedWhereModel.create!(name: "typed-one", value: 1)
+      expect(TypedWhereModel.fetch_by(name: "typed-one", value: 1)).to eq record
+      expect(TypedWhereModel.where(value: 1).fetch_by(name: "typed-one")).to eq record
+    end
+
+    it "fetches records with a default scope that matches the cache configuration" do
+      record = DefaultScopeModel.create!(name: "one")
+      expect(DefaultScopeModel.fetch_by(name: "one")).to eq record
+      expect(SupportTableCache.cache.read(SupportTableCache.cache_key(DefaultScopeModel, {name: "one"}, ["name"], true))).to eq record
+    end
+
+    it "raises an ArgumentError if the relation conflicts with the fetched attributes" do
+      expect { TestModel.where(name: "Two").fetch_by(name: "One") }.to raise_error(ArgumentError)
     end
 
     it "raises an ActiveRecord::RecordNotFoundError if fetch_by! does not find a record" do

@@ -29,11 +29,11 @@ module SupportTableCache
       # if the transaction is rolled back, so they cannot be cached.
       return super if SupportTableCache.open_transaction?(klass)
 
-      attributes = (args.first || {}).stringify_keys
-
-      # Apply any conditions from the current relation chain
-      scope_conditions = where_values_hash.stringify_keys
-      attributes = scope_conditions.merge(attributes) if scope_conditions.present?
+      # Apply any conditions from the current relation chain. This returns nil if the relation
+      # and the find_by arguments specify different values for the same attribute since both
+      # conditions have to be applied by the database in that case.
+      attributes = support_table_query_attributes(args.first)
+      return super if attributes.nil?
 
       cache_key = SupportTableCache.cache_key_for_query(klass, attributes)
 
@@ -63,9 +63,10 @@ module SupportTableCache
     # @return [ActiveRecord::Base, nil] The found record or nil if not found.
     # @raise [ArgumentError] if the query cannot use the cache.
     def fetch_by(attributes)
-      find_by_attribute_names = support_table_find_by_attribute_names(attributes)
-      unless klass.support_table_cache_by_attributes.any? { |attribute_names, _ci| attribute_names == find_by_attribute_names }
-        raise ArgumentError.new("#{name} does not cache queries by #{find_by_attribute_names.to_sentence}")
+      attributes = (attributes || {}).stringify_keys
+      query_attributes = support_table_query_attributes(attributes)
+      unless SupportTableCache.cacheable_query?(klass, query_attributes)
+        raise ArgumentError.new("#{klass.name} does not cache queries by #{(query_attributes || attributes).keys.sort.to_sentence}")
       end
       find_by(attributes)
     end
@@ -106,12 +107,10 @@ module SupportTableCache
       true
     end
 
-    def support_table_find_by_attribute_names(attributes)
-      attributes ||= {}
-      if scope_attributes.present?
-        attributes = scope_attributes.merge(attributes)
-      end
-      attributes.keys.map(&:to_s).sort
+    # The attributes a query on this relation is filtering on. Returns nil if the relation
+    # conditions conflict with the passed in attributes.
+    def support_table_query_attributes(attributes)
+      SupportTableCache.merge_query_attributes(klass, where_values_hash.stringify_keys, (attributes || {}).stringify_keys)
     end
   end
 end

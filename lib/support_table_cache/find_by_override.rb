@@ -34,9 +34,10 @@ module SupportTableCache
     # @return [ActiveRecord::Base, nil] The found record or nil if not found.
     # @raise [ArgumentError] if the query cannot use the cache.
     def fetch_by(attributes)
-      find_by_attribute_names = support_table_find_by_attribute_names(attributes)
-      unless support_table_cache_by_attributes.any? { |attribute_names, _ci, _where| attribute_names == find_by_attribute_names }
-        raise ArgumentError.new("#{name} does not cache queries by #{find_by_attribute_names.to_sentence}")
+      attributes = (attributes || {}).stringify_keys
+      query_attributes = support_table_query_attributes(attributes)
+      unless SupportTableCache.cacheable_query?(self, query_attributes)
+        raise ArgumentError.new("#{name} does not cache queries by #{(query_attributes || attributes).keys.sort.to_sentence}")
       end
       find_by(attributes)
     end
@@ -57,12 +58,12 @@ module SupportTableCache
 
     private
 
-    def support_table_find_by_attribute_names(attributes)
-      attributes ||= {}
-      if respond_to?(:scope_attributes) && scope_attributes.present?
-        attributes = scope_attributes.merge(attributes)
-      end
-      attributes.keys.map(&:to_s).sort
+    # The attributes a query on this class is filtering on, including any conditions from a
+    # default scope. Returns nil if the default scope conditions conflict with the passed in
+    # attributes. Note that the where clause is used rather than `scope_attributes` since that
+    # method also includes `create_with` values, which are not part of the query.
+    def support_table_query_attributes(attributes)
+      SupportTableCache.merge_query_attributes(self, all.where_values_hash.stringify_keys, attributes)
     end
   end
 end

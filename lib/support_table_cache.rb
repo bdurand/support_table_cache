@@ -295,6 +295,42 @@ module SupportTableCache
       nil
     end
 
+    # Return true if a query on a set of attributes can be looked up in the cache.
+    #
+    # @param klass [Class] The class that is being queried.
+    # @param attributes [Hash, nil] The query attributes with stringified keys.
+    # @return [Boolean]
+    # @api private
+    def cacheable_query?(klass, attributes)
+      return false if attributes.nil?
+
+      !cache_key_for_query(klass, attributes).nil?
+    end
+
+    # Merge the conditions from a relation's where clause with the attributes passed to a
+    # finder method. A cache key can only represent a single value per attribute, so if both
+    # specify a different value for the same attribute the query cannot be cached; the
+    # database has to apply both conditions.
+    #
+    # @param klass [Class] The class that is being queried.
+    # @param scope_conditions [Hash] The relation's where conditions with stringified keys.
+    # @param attributes [Hash] The finder attributes with stringified keys.
+    # @return [Hash, nil] The merged attributes or nil if the conditions conflict.
+    # @api private
+    def merge_query_attributes(klass, scope_conditions, attributes)
+      return attributes if scope_conditions.blank?
+
+      conflict = scope_conditions.any? do |name, value|
+        next false unless attributes.include?(name)
+
+        type = klass.type_for_attribute(name)
+        type.cast(value) != type.cast(attributes[name])
+      end
+      return nil if conflict
+
+      scope_conditions.merge(attributes)
+    end
+
     # Return true if there is an open transaction on the class' connection. Queries should
     # not be cached inside a transaction since they could return uncommitted data that would
     # be invalid if the transaction is rolled back. Transactions opened with joinable: false

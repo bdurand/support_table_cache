@@ -27,6 +27,15 @@ RSpec.describe SupportTableCache::MemoryCache do
     expect(new_value).to eq :baq
   end
 
+  it "does not carry over the expiration when replacing an expired value" do
+    expect(cache.fetch("foo", expires_in: 0.01) { :bar }).to eq :bar
+
+    sleep(0.02)
+
+    expect(cache.fetch("foo") { :baz }).to eq :baz
+    expect(cache.fetch("foo") { :baq }).to eq :baz
+  end
+
   it "does not cache nil" do
     value = cache.fetch("foo") { nil }
     expect(value).to eq nil
