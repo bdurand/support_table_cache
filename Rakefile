@@ -30,7 +30,7 @@ namespace :appraisal do
       File.delete(file) if File.file?(file)
     end
 
-    system "bundle exec appraisal generate" || abort("appraisal generate failed")
+    system("bundle exec appraisal generate") || abort("appraisal generate failed")
 
     Dir.glob("gemfiles/*.gemfile") do |file|
       puts "Locking #{file}"

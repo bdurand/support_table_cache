@@ -41,7 +41,9 @@ module SupportTableCache
             key = [reflection.class_name, {reflection.association_primary_key => foreign_key}]
             cache = reflection.klass.send(:current_support_table_cache)
             ttl = reflection.klass.send(:support_table_cache_ttl)
-            if cache
+            # Queries inside a transaction could see uncommitted data that would be invalid
+            # if the transaction is rolled back, so they cannot be cached.
+            if cache && !SupportTableCache.open_transaction?(reflection.klass)
               cache.fetch(key, expires_in: ttl) do
                 #{association_name}_without_cache
               end

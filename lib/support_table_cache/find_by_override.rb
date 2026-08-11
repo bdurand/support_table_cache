@@ -39,6 +39,9 @@ module SupportTableCache
       unless SupportTableCache.cacheable_query?(self, query_attributes)
         raise ArgumentError.new("#{name} does not cache queries by #{(query_attributes || attributes).keys.sort.to_sentence}")
       end
+      unless all.send(:support_table_cacheable_scope?)
+        raise ArgumentError.new("#{name} cannot use the support table cache on an uncacheable scope")
+      end
       find_by(attributes)
     end
 

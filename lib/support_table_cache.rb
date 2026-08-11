@@ -78,6 +78,8 @@ module SupportTableCache
 
           attributes = record.attributes.slice(*attribute_names)
           cache_key = SupportTableCache.cache_key(self, attributes, attribute_names, case_sensitive)
+          next if cache_key.nil?
+
           cache.write(cache_key, record, expires_in: support_table_cache_ttl)
         end
       end

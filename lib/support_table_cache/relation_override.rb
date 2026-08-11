@@ -20,8 +20,7 @@ module SupportTableCache
       return super if select_values.present?
 
       # Only queries by simple attribute equality can be matched against cache keys.
-      simple_attribute_query = args.empty? || (args.size == 1 && args.first.is_a?(Hash))
-      return super unless simple_attribute_query
+      return super unless args.size == 1 && args.first.is_a?(Hash)
 
       return super unless support_table_cacheable_scope?
 
@@ -67,6 +66,12 @@ module SupportTableCache
       query_attributes = support_table_query_attributes(attributes)
       unless SupportTableCache.cacheable_query?(klass, query_attributes)
         raise ArgumentError.new("#{klass.name} does not cache queries by #{(query_attributes || attributes).keys.sort.to_sentence}")
+      end
+      unless support_table_cacheable_scope?
+        raise ArgumentError.new("#{klass.name} cannot cache queries on a relation with conditions that cannot be represented in the cache key")
+      end
+      if SupportTableCache.open_transaction?(klass)
+        raise ArgumentError.new("#{klass.name} cannot cache queries inside a transaction")
       end
       find_by(attributes)
     end

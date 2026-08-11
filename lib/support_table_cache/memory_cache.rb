@@ -14,9 +14,10 @@ module SupportTableCache
     def initialize
       @cache = {}
       @mutex = Mutex.new
-      # Incremented on every delete or clear so that a fetch that was generating a value
-      # while the cache was invalidated will not store a stale value.
-      @generation = 0
+      # Maps a cache key to the tokens of the fetches currently generating a value for it.
+      # Invalidating a key drops its tokens so that those fetches will not store the stale
+      # value they generated. Only keys with a fetch in flight are tracked.
+      @pending = {}
     end
 
     # Fetch a value from the cache. If the key is not found or has expired, yields to get a new value.
@@ -27,31 +28,45 @@ module SupportTableCache
     # @return [Object, nil] The cached value or the result of the block, or nil if no value is found.
     def fetch(key, expires_in: nil)
       serialized_value = nil
-      generation = nil
+      token = nil
       @mutex.synchronize do
-        generation = @generation
         cached_value, cached_expire_at = @cache[key]
         if cached_expire_at && cached_expire_at < Process.clock_gettime(Process::CLOCK_MONOTONIC)
           @cache.delete(key)
         else
           serialized_value = cached_value
         end
+
+        if serialized_value.nil? && block_given?
+          token = Object.new
+          (@pending[key] ||= []) << token
+        end
       end
 
       if serialized_value.nil?
-        value = yield if block_given?
-        return nil if value.nil?
+        begin
+          value = yield if block_given?
+          return nil if value.nil?
 
-        serialized_value = Marshal.dump(value)
-        # The expiration is always recalculated from the expires_in argument so that replacing
-        # an expired entry without an expiration does not carry over the old expiration time.
-        expire_at = (Process.clock_gettime(Process::CLOCK_MONOTONIC) + expires_in if expires_in)
+          serialized_value = Marshal.dump(value)
+          # The expiration is always recalculated from the expires_in argument so that replacing
+          # an expired entry without an expiration does not carry over the old expiration time.
+          expire_at = (Process.clock_gettime(Process::CLOCK_MONOTONIC) + expires_in if expires_in)
 
-        @mutex.synchronize do
-          # Only store the value if the cache was not invalidated while the value was being
-          # generated. Otherwise a record deleted by a concurrent invalidation could be
-          # resurrected in the cache with stale data.
-          @cache[key] = [serialized_value, expire_at] if @generation == generation
+          @mutex.synchronize do
+            # Only store the value if this key was not invalidated while the value was being
+            # generated. Otherwise a record deleted or overwritten by a concurrent update could
+            # be resurrected in the cache with stale data.
+            @cache[key] = [serialized_value, expire_at] if @pending[key]&.include?(token)
+          end
+        ensure
+          @mutex.synchronize do
+            tokens = @pending[key]
+            if tokens
+              tokens.delete(token)
+              @pending.delete(key) if tokens.empty?
+            end
+          end
         end
       end
 
@@ -82,6 +97,9 @@ module SupportTableCache
       serialized_value = Marshal.dump(value)
 
       @mutex.synchronize do
+        # Discard any fetch generating a value for this key so that it cannot overwrite the
+        # newer value being written here.
+        @pending.delete(key)
         @cache[key] = [serialized_value, expire_at]
       end
 
@@ -94,7 +112,7 @@ module SupportTableCache
     # @return [void]
     def delete(key)
       @mutex.synchronize do
-        @generation += 1
+        @pending.delete(key)
         @cache.delete(key)
       end
       nil
@@ -105,7 +123,7 @@ module SupportTableCache
     # @return [void]
     def clear
       @mutex.synchronize do
-        @generation += 1
+        @pending.clear
         @cache.clear
       end
       nil
