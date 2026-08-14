@@ -19,27 +19,22 @@ module SupportTableCache
 
       return super if select_values.present?
 
-      cache_key = nil
-      attributes = ((args.size == 1 && args.first.is_a?(Hash)) ? args.first.stringify_keys : {})
+      # Only queries by simple attribute equality can be matched against cache keys.
+      return super unless args.size == 1 && args.first.is_a?(Hash)
 
-      # Apply any attributes from the current relation chain
-      if scope_attributes.present?
-        attributes = scope_attributes.stringify_keys.merge(attributes)
-      end
+      return super unless support_table_cacheable_scope?
 
-      if attributes.present?
-        support_table_cache_by_attributes.each do |attribute_names, case_sensitive, where|
-          where&.each do |name, value|
-            if attributes.include?(name) && attributes[name] == value
-              attributes.delete(name)
-            else
-              return super
-            end
-          end
-          cache_key = SupportTableCache.cache_key(klass, attributes, attribute_names, case_sensitive)
-          break if cache_key
-        end
-      end
+      # Queries inside a transaction could see uncommitted data that would be invalid
+      # if the transaction is rolled back, so they cannot be cached.
+      return super if SupportTableCache.open_transaction?(klass)
+
+      # Apply any conditions from the current relation chain. This returns nil if the relation
+      # and the find_by arguments specify different values for the same attribute since both
+      # conditions have to be applied by the database in that case.
+      attributes = support_table_query_attributes(args.first)
+      return super if attributes.nil?
+
+      cache_key = SupportTableCache.cache_key_for_query(klass, attributes)
 
       if cache_key
         cache.fetch(cache_key, expires_in: support_table_cache_ttl) { super }
@@ -67,9 +62,16 @@ module SupportTableCache
     # @return [ActiveRecord::Base, nil] The found record or nil if not found.
     # @raise [ArgumentError] if the query cannot use the cache.
     def fetch_by(attributes)
-      find_by_attribute_names = support_table_find_by_attribute_names(attributes)
-      unless klass.support_table_cache_by_attributes.any? { |attribute_names, _ci| attribute_names == find_by_attribute_names }
-        raise ArgumentError.new("#{name} does not cache queries by #{find_by_attribute_names.to_sentence}")
+      attributes = (attributes || {}).stringify_keys
+      query_attributes = support_table_query_attributes(attributes)
+      unless SupportTableCache.cacheable_query?(klass, query_attributes)
+        raise ArgumentError.new("#{klass.name} does not cache queries by #{(query_attributes || attributes).keys.sort.to_sentence}")
+      end
+      unless support_table_cacheable_scope?
+        raise ArgumentError.new("#{klass.name} cannot cache queries on a relation with conditions that cannot be represented in the cache key")
+      end
+      if SupportTableCache.open_transaction?(klass)
+        raise ArgumentError.new("#{klass.name} cannot cache queries inside a transaction")
       end
       find_by(attributes)
     end
@@ -90,12 +92,30 @@ module SupportTableCache
 
     private
 
-    def support_table_find_by_attribute_names(attributes)
-      attributes ||= {}
-      if scope_attributes.present?
-        attributes = scope_attributes.merge(attributes)
-      end
-      attributes.keys.map(&:to_s).sort
+    # A relation can only be cached if all of its conditions are simple equality conditions
+    # on the model's own attributes that can be represented in a cache key. Anything else
+    # (SQL string conditions, ranges, OR clauses, joins, etc.) is not visible in
+    # where_values_hash and could silently change which record the query returns.
+    def support_table_cacheable_scope?
+      # WhereClause#predicates is not part of the public Rails API (its visibility has varied
+      # across Rails versions), but there is no public way to detect conditions that cannot
+      # be represented in where_values_hash. If the method is ever removed in a future Rails
+      # version, fail safe by bypassing the cache rather than raising. There is a spec
+      # asserting the method exists so an incompatible Rails upgrade fails explicitly.
+      return false unless where_clause.respond_to?(:predicates, true)
+      return false unless where_clause.send(:predicates).size == where_values_hash.size
+      return false if joins_values.present? || left_outer_joins_values.present?
+      return false if group_values.present? || !having_clause.empty?
+      return false if !from_clause.empty? || offset_value.present? || lock_value
+      return false if eager_loading?
+
+      true
+    end
+
+    # The attributes a query on this relation is filtering on. Returns nil if the relation
+    # conditions conflict with the passed in attributes.
+    def support_table_query_attributes(attributes)
+      SupportTableCache.merge_query_attributes(klass, where_values_hash.stringify_keys, (attributes || {}).stringify_keys)
     end
   end
 end

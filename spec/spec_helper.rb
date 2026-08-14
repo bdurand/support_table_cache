@@ -70,6 +70,30 @@ class DefaultScopeModel < ActiveRecord::Base
   default_scope { where(deleted_at: nil) }
 end
 
+class WhereConditionModel < ActiveRecord::Base
+  include SupportTableCache
+
+  self.table_name = "default_scope_models"
+
+  cache_by :name, where: {deleted_at: nil}
+  cache_by :label
+end
+
+class TypedWhereModel < ActiveRecord::Base
+  include SupportTableCache
+
+  self.table_name = "test_models"
+
+  cache_by :name, where: {value: 1}
+  cache_by :code, where: {value: "1"}
+end
+
+class NoCacheByModel < ActiveRecord::Base
+  include SupportTableCache
+
+  self.table_name = "things"
+end
+
 class Thing < ActiveRecord::Base
   has_many :other_things
   has_many :test_models, through: :other_things

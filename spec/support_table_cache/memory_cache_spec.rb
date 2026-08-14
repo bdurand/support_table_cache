@@ -27,6 +27,15 @@ RSpec.describe SupportTableCache::MemoryCache do
     expect(new_value).to eq :baq
   end
 
+  it "does not carry over the expiration when replacing an expired value" do
+    expect(cache.fetch("foo", expires_in: 0.01) { :bar }).to eq :bar
+
+    sleep(0.02)
+
+    expect(cache.fetch("foo") { :baz }).to eq :baz
+    expect(cache.fetch("foo") { :baq }).to eq :baz
+  end
+
   it "does not cache nil" do
     value = cache.fetch("foo") { nil }
     expect(value).to eq nil
@@ -48,6 +57,24 @@ RSpec.describe SupportTableCache::MemoryCache do
     cache.clear
     value = cache.fetch("foo") { :baz }
     expect(value).to eq :baz
+  end
+
+  it "does not store a value if the key is deleted while the value is being generated" do
+    value = cache.fetch("foo") do
+      cache.delete("foo")
+      :bar
+    end
+    expect(value).to eq :bar
+    expect(cache.read("foo")).to eq nil
+  end
+
+  it "does not store a value if the cache is cleared while the value is being generated" do
+    value = cache.fetch("foo") do
+      cache.clear
+      :bar
+    end
+    expect(value).to eq :bar
+    expect(cache.read("foo")).to eq nil
   end
 
   # rubocop:enable Style/RedundantFetchBlock

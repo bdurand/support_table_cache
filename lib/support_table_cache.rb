@@ -28,6 +28,8 @@ module SupportTableCache
     # @api private
     class_attribute :support_table_cache_impl, instance_accessor: false
 
+    self.support_table_cache_by_attributes = []
+
     unless ActiveRecord::Relation.include?(RelationOverride)
       ActiveRecord::Relation.prepend(RelationOverride)
     end
@@ -68,13 +70,17 @@ module SupportTableCache
     # @return [void]
     def load_cache
       cache = current_support_table_cache
-      return super if cache.nil?
+      return if cache.nil?
 
       find_each do |record|
-        support_table_cache_by_attributes.each do |attribute_names, case_sensitive|
+        support_table_cache_by_attributes.each do |attribute_names, case_sensitive, where|
+          next unless where.nil? || where.all? { |name, value| record[name] == type_for_attribute(name).cast(value) }
+
           attributes = record.attributes.slice(*attribute_names)
           cache_key = SupportTableCache.cache_key(self, attributes, attribute_names, case_sensitive)
-          cache.fetch(cache_key, expires_in: support_table_cache_ttl) { record }
+          next if cache_key.nil?
+
+          cache.write(cache_key, record, expires_in: support_table_cache_ttl)
         end
       end
     end
@@ -120,9 +126,10 @@ module SupportTableCache
         where = where.stringify_keys
       end
 
-      self.support_table_cache_by_attributes ||= []
-      support_table_cache_by_attributes.delete_if { |data| data.first == attributes }
-      self.support_table_cache_by_attributes += [[attributes, case_sensitive, where]]
+      # Build a new array rather than mutating the existing one since the class attribute
+      # value can be shared with the superclass.
+      existing = (support_table_cache_by_attributes || []).reject { |data| data.first == attributes }
+      self.support_table_cache_by_attributes = existing + [[attributes, case_sensitive, where]]
     end
 
     private
@@ -138,6 +145,13 @@ module SupportTableCache
 
     def current_support_table_cache
       return nil if support_table_cache_disabled?
+      support_table_cache_for_invalidation
+    end
+
+    # The cache used when removing entries. Invalidation must ignore the disabled flag;
+    # otherwise records changed while caching is disabled would leave stale entries behind
+    # for when caching is re-enabled.
+    def support_table_cache_for_invalidation
       SupportTableCache.testing_cache || support_table_cache_impl || SupportTableCache.cache
     end
   end
@@ -241,7 +255,11 @@ module SupportTableCache
 
       sorted_attributes = {}
       sorted_names.each do |attribute_name|
-        value = (attributes[attribute_name] || attributes[attribute_name.to_sym])
+        value = (attributes.key?(attribute_name) ? attributes[attribute_name] : attributes[attribute_name.to_sym])
+        # Cast the value through the attribute type so that equivalent values (e.g. a symbol
+        # and a string, or "5" and 5) always produce the same cache key. Otherwise entries
+        # could be written under keys that the invalidation callbacks can never delete.
+        value = klass.type_for_attribute(attribute_name).cast(value)
         if !case_sensitive && (value.is_a?(String) || value.is_a?(Symbol))
           value = value.to_s.downcase
         end
@@ -249,6 +267,92 @@ module SupportTableCache
       end
 
       [klass.name, sorted_attributes]
+    end
+
+    # Find the cache key for a query on a set of attributes by matching the attributes
+    # against the cacheable attribute configuration for a class. Returns nil if the
+    # query cannot be cached.
+    #
+    # @param klass [Class] The class that is being queried.
+    # @param attributes [Hash] The query attributes with stringified keys.
+    # @return [Array(String, Hash), nil] The cache key or nil if the query is not cacheable.
+    # @api private
+    def cache_key_for_query(klass, attributes)
+      return nil if attributes.blank?
+
+      Array(klass.support_table_cache_by_attributes).each do |attribute_names, case_sensitive, where|
+        # Cast both sides through the attribute type so that equivalent values (e.g. 1 and "1")
+        # match the where clause the same way they are matched when building cache keys.
+        where_matched = where.nil? || where.all? do |name, value|
+          type = klass.type_for_attribute(name)
+          attributes.include?(name) && type.cast(attributes[name]) == type.cast(value)
+        end
+        next unless where_matched
+
+        key_attributes = (where ? attributes.except(*where.keys) : attributes)
+        key = cache_key(klass, key_attributes, attribute_names, case_sensitive)
+        return key if key
+      end
+
+      nil
+    end
+
+    # Return true if a query on a set of attributes can be looked up in the cache.
+    #
+    # @param klass [Class] The class that is being queried.
+    # @param attributes [Hash, nil] The query attributes with stringified keys.
+    # @return [Boolean]
+    # @api private
+    def cacheable_query?(klass, attributes)
+      return false if attributes.nil?
+
+      !cache_key_for_query(klass, attributes).nil?
+    end
+
+    # Merge the conditions from a relation's where clause with the attributes passed to a
+    # finder method. A cache key can only represent a single value per attribute, so if both
+    # specify a different value for the same attribute the query cannot be cached; the
+    # database has to apply both conditions.
+    #
+    # @param klass [Class] The class that is being queried.
+    # @param scope_conditions [Hash] The relation's where conditions with stringified keys.
+    # @param attributes [Hash] The finder attributes with stringified keys.
+    # @return [Hash, nil] The merged attributes or nil if the conditions conflict.
+    # @api private
+    def merge_query_attributes(klass, scope_conditions, attributes)
+      return attributes if scope_conditions.blank?
+
+      conflict = scope_conditions.any? do |name, value|
+        next false unless attributes.include?(name)
+
+        type = klass.type_for_attribute(name)
+        type.cast(value) != type.cast(attributes[name])
+      end
+      return nil if conflict
+
+      scope_conditions.merge(attributes)
+    end
+
+    # Return true if there is an open transaction on the class' connection. Queries should
+    # not be cached inside a transaction since they could return uncommitted data that would
+    # be invalid if the transaction is rolled back. Transactions opened with joinable: false
+    # (i.e. Rails transactional test fixtures) are ignored.
+    #
+    # @param klass [Class] The model class being queried.
+    # @return [Boolean]
+    # @api private
+    def open_transaction?(klass)
+      return false unless klass.connection_pool.active_connection?
+
+      connection = klass.connection
+      return false unless connection.transaction_open?
+
+      # current_transaction and joinable? are internal Rails APIs. If a future Rails version
+      # changes them, fail safe by treating the transaction as open (bypassing the cache)
+      # rather than raising. There is a spec asserting the API exists so an incompatible
+      # Rails upgrade fails explicitly.
+      transaction = connection.current_transaction
+      !transaction.respond_to?(:joinable?) || transaction.joinable?
     end
 
     def fiber_local_value(varname)
@@ -267,7 +371,7 @@ module SupportTableCache
     cache_by_attributes = self.class.support_table_cache_by_attributes
     return if cache_by_attributes.blank?
 
-    cache = self.class.send(:current_support_table_cache)
+    cache = self.class.send(:support_table_cache_for_invalidation)
     return if cache.nil?
 
     cache_by_attributes.each do |attribute_names, case_sensitive|
@@ -289,7 +393,7 @@ module SupportTableCache
     cache_by_attributes = self.class.support_table_cache_by_attributes
     return if cache_by_attributes.blank?
 
-    cache = self.class.send(:current_support_table_cache)
+    cache = self.class.send(:support_table_cache_for_invalidation)
     return if cache.nil?
 
     cache_by_attributes.each do |attribute_names, case_sensitive|

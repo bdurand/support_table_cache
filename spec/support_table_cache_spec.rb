@@ -26,12 +26,27 @@ RSpec.describe SupportTableCache do
       key = SupportTableCache.cache_key(TestModel, {group: "first", code: "one"}, ["code", "name"], false)
       expect(key).to eq nil
     end
+
+    it "normalizes equivalent attribute values to the same cache key" do
+      expect(SupportTableCache.cache_key(TestModel, {name: :One}, ["name"], true))
+        .to eq SupportTableCache.cache_key(TestModel, {name: "One"}, ["name"], true)
+      expect(SupportTableCache.cache_key(TestModel, {value: "1"}, ["value"], true))
+        .to eq SupportTableCache.cache_key(TestModel, {value: 1}, ["value"], true)
+    end
   end
 
   describe "cache_by" do
     it "can remove existing caching by calling with false" do
       expect(TestModel.support_table_cache_by_attributes.size).to eq 2
       expect(Subclass.support_table_cache_by_attributes.size).to eq 1
+    end
+
+    it "does not modify the parent class configuration when a subclass overrides it" do
+      parent_config = TestModel.support_table_cache_by_attributes.dup
+      Class.new(TestModel) do
+        cache_by :name, case_sensitive: false
+      end
+      expect(TestModel.support_table_cache_by_attributes).to eq parent_config
     end
   end
 
@@ -86,6 +101,28 @@ RSpec.describe SupportTableCache do
       expect(TestModel.find_by(value: 1)).to eq record_1
       expect(TestModel.find_by(name: "One", value: 1)).to eq record_1
     end
+
+    it "does not use the cache when find_by is called with non-hash arguments" do
+      expect(TestModel.find_by(name: "One")).to eq record_1 # prime the cache
+      expect(TestModel.find_by("value > 100")).to be_nil
+    end
+
+    it "does not error on a model that includes the concern without any cache_by" do
+      thing = NoCacheByModel.create!(name: "no cache by")
+      expect(NoCacheByModel.find_by(name: "no cache by")).to eq thing
+    end
+
+    it "invalidates entries created with equivalent attribute values" do
+      TestModel.support_table_cache = :memory
+      begin
+        expect(TestModel.find_by(name: :One).value).to eq 1
+        record_1.update!(value: 42)
+        expect(TestModel.find_by(name: :One).value).to eq 42
+        expect(TestModel.find_by(name: "One").value).to eq 42
+      ensure
+        TestModel.support_table_cache = nil
+      end
+    end
   end
 
   describe "finding on a relation" do
@@ -132,6 +169,83 @@ RSpec.describe SupportTableCache do
       expect(TestModel.select(:id, :name).find_by(name: "One")).to eq record_1
       expect(SupportTableCache.cache.read(SupportTableCache.cache_key(TestModel, {name: "One"}, ["name"], true))).to eq nil
     end
+
+    it "does not use the cache when the relation has conditions that cannot be represented in the cache key" do
+      expect(TestModel.find_by(name: "One")).to eq record_1 # prime the cache
+      expect(TestModel.where("value > 100").find_by(name: "One")).to be_nil
+      expect(TestModel.where(value: 100..200).find_by(name: "One")).to be_nil
+      expect(TestModel.where.not(value: 1).find_by(name: "One")).to be_nil
+      expect(TestModel.where(name: "One").find_by("value > 100")).to be_nil
+    end
+
+    it "does not populate the cache from a relation with conditions not in the cache key" do
+      cache_key = SupportTableCache.cache_key(TestModel, {name: "One"}, ["name"], true)
+      expect(TestModel.where("value > 100").find_by(name: "One")).to be_nil
+      expect(SupportTableCache.cache.read(cache_key)).to be_nil
+    end
+
+    it "ignores create_with values when building the cache key" do
+      expect(TestModel.create_with(value: 100).where(group: "First").find_by(code: "one")).to eq record_1
+      expect(SupportTableCache.cache.read(SupportTableCache.cache_key(TestModel, {code: "one", group: "First"}, ["code", "group"], false))).to eq record_1
+    end
+
+    it "does not use the cache when the relation and find_by arguments conflict on an attribute" do
+      expect(TestModel.find_by(name: "One")).to eq record_1 # prime the cache
+      expect(TestModel.where(name: "Two").find_by(name: "One")).to be_nil
+      expect(TestModel.where(group: "Second").find_by(group: "First", code: "one")).to be_nil
+    end
+
+    it "does not use the cache when the relation and find_by arguments differ only by case" do
+      expect(TestModel.where(group: "First").find_by(code: "one")).to eq record_1 # prime the cache
+      expect(TestModel.where(group: "FIRST").find_by(group: "First", code: "one")).to be_nil
+    end
+
+    it "uses the cache when the relation and find_by arguments agree on an attribute" do
+      expect(TestModel.where(group: "First").find_by(group: "First", code: "one")).to eq record_1
+      expect(SupportTableCache.cache.read(SupportTableCache.cache_key(TestModel, {code: "one", group: "First"}, ["code", "group"], false))).to eq record_1
+    end
+  end
+
+  describe "finding inside a transaction" do
+    it "does not use or populate the cache inside a transaction" do
+      cache_key = SupportTableCache.cache_key(TestModel, {name: "One"}, ["name"], true)
+      TestModel.transaction do
+        expect(TestModel.find_by(name: "One")).to eq record_1
+      end
+      expect(SupportTableCache.cache.read(cache_key)).to be_nil
+    end
+
+    it "does not cache uncommitted data from a rolled back transaction" do
+      TestModel.transaction do
+        record_1.update!(value: 500)
+        expect(TestModel.find_by(name: "One").value).to eq 500
+        raise ActiveRecord::Rollback
+      end
+      expect(record_1.reload.value).to eq 1
+      expect(TestModel.find_by(name: "One").value).to eq 1
+    end
+
+    it "uses the cache inside a non-joinable transaction like transactional test fixtures" do
+      cache_key = SupportTableCache.cache_key(TestModel, {name: "One"}, ["name"], true)
+      TestModel.connection.transaction(joinable: false) do
+        expect(TestModel.find_by(name: "One")).to eq record_1
+      end
+      expect(SupportTableCache.cache.read(cache_key)).to eq record_1
+    end
+  end
+
+  describe "finding with a where condition on the cache configuration" do
+    it "uses the cache for a config declared after a config with a non-matching where clause" do
+      record = WhereConditionModel.create!(name: "n1", label: "l1")
+      expect(WhereConditionModel.find_by(label: "l1")).to eq record
+      expect(SupportTableCache.cache.read(SupportTableCache.cache_key(WhereConditionModel, {label: "l1"}, ["label"], true))).to eq record
+    end
+
+    it "casts values through the attribute type when matching the where clause" do
+      record = TypedWhereModel.create!(name: "typed-one", value: 1)
+      expect(TypedWhereModel.find_by(name: "typed-one", value: "1")).to eq record
+      expect(SupportTableCache.cache.read(SupportTableCache.cache_key(TypedWhereModel, {name: "typed-one"}, ["name"], true))).to eq record
+    end
   end
 
   describe "finding with a default scope" do
@@ -177,6 +291,27 @@ RSpec.describe SupportTableCache do
 
     it "raises an ArgumentError if scoped fetched query is not cacheable" do
       expect { TestModel.where(value: nil).fetch_by(code: "one") }.to raise_error(ArgumentError)
+    end
+
+    it "raises an ArgumentError if the query does not match the where condition on the cache configuration" do
+      expect { TypedWhereModel.fetch_by(name: "typed-one") }.to raise_error(ArgumentError)
+      expect { TypedWhereModel.where(value: 2).fetch_by(name: "typed-one") }.to raise_error(ArgumentError)
+    end
+
+    it "fetches records that match the where condition on the cache configuration" do
+      record = TypedWhereModel.create!(name: "typed-one", value: 1)
+      expect(TypedWhereModel.fetch_by(name: "typed-one", value: 1)).to eq record
+      expect(TypedWhereModel.where(value: 1).fetch_by(name: "typed-one")).to eq record
+    end
+
+    it "fetches records with a default scope that matches the cache configuration" do
+      record = DefaultScopeModel.create!(name: "one")
+      expect(DefaultScopeModel.fetch_by(name: "one")).to eq record
+      expect(SupportTableCache.cache.read(SupportTableCache.cache_key(DefaultScopeModel, {name: "one"}, ["name"], true))).to eq record
+    end
+
+    it "raises an ArgumentError if the relation conflicts with the fetched attributes" do
+      expect { TestModel.where(name: "Two").fetch_by(name: "One") }.to raise_error(ArgumentError)
     end
 
     it "raises an ActiveRecord::RecordNotFoundError if fetch_by! does not find a record" do
@@ -284,6 +419,14 @@ RSpec.describe SupportTableCache do
 
       expect(blocks_executed).to eq true
     end
+
+    it "still clears cache entries when a record is changed while caching is disabled" do
+      expect(TestModel.find_by(name: "One").value).to eq 1
+      SupportTableCache.disable do
+        record_1.update!(value: 42)
+      end
+      expect(TestModel.find_by(name: "One").value).to eq 42
+    end
   end
 
   describe "setting the cache" do
@@ -359,6 +502,38 @@ RSpec.describe SupportTableCache do
         expect(cache.read(cache_key)).to eq record
       end
     end
+
+    it "does nothing when caching is disabled" do
+      expect { SupportTableCache.disable { TestModel.load_cache } }.to_not raise_error
+    end
+
+    it "does not cache records that do not match a where condition" do
+      active = WhereConditionModel.create!(name: "active-one")
+      deleted = WhereConditionModel.create!(name: "deleted-one", deleted_at: Time.now)
+      cache = ActiveSupport::Cache::MemoryStore.new
+      WhereConditionModel.support_table_cache = cache
+      begin
+        WhereConditionModel.load_cache
+        expect(cache.read(SupportTableCache.cache_key(WhereConditionModel, {name: "active-one"}, ["name"], true))).to eq active
+        expect(cache.read(SupportTableCache.cache_key(WhereConditionModel, {name: "deleted-one"}, ["name"], true))).to be_nil
+        expect(deleted.reload.name).to eq "deleted-one"
+      ensure
+        WhereConditionModel.support_table_cache = nil
+      end
+    end
+
+    it "casts where condition values through the attribute type when matching records" do
+      record = TypedWhereModel.create!(name: "typed-one", code: "typed-code", value: 1)
+      cache = ActiveSupport::Cache::MemoryStore.new
+      TypedWhereModel.support_table_cache = cache
+      begin
+        TypedWhereModel.load_cache
+        expect(cache.read(SupportTableCache.cache_key(TypedWhereModel, {name: "typed-one"}, ["name"], true))).to eq record
+        expect(cache.read(SupportTableCache.cache_key(TypedWhereModel, {code: "typed-code"}, ["code"], true))).to eq record
+      ensure
+        TypedWhereModel.support_table_cache = nil
+      end
+    end
   end
 
   describe "testing!" do
@@ -376,6 +551,29 @@ RSpec.describe SupportTableCache do
       end
 
       expect(SupportTableCache.cache).to eq normal_cache
+    end
+  end
+
+  # These specs pin the internal Rails APIs that the gem depends on. The code fails safe by
+  # bypassing the cache if these APIs disappear, so these specs exist to make an incompatible
+  # Rails upgrade fail explicitly instead of silently degrading performance.
+  describe "internal Rails API dependencies" do
+    it "can count the predicates on a relation's where clause" do
+      where_clause = TestModel.where(name: "One", value: 1..10).send(:where_clause)
+      expect(where_clause.respond_to?(:predicates, true)).to be true
+      expect(where_clause.send(:predicates).size).to eq 2
+    end
+
+    it "can detect whether the current transaction is joinable" do
+      TestModel.connection.transaction(joinable: false) do
+        transaction = TestModel.connection.current_transaction
+        expect(transaction).to respond_to(:joinable?)
+        expect(transaction.joinable?).to be false
+      end
+
+      TestModel.transaction do
+        expect(TestModel.connection.current_transaction.joinable?).to be true
+      end
     end
   end
 end
